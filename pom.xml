@@ -4,7 +4,7 @@
     <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
     <packaging>jar</packaging>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0.1-SNAPSHOT</version>
     <name>magazine</name>
     <url>http://maven.apache.org</url>
     <dependencies>

@@ -120,7 +120,7 @@ public class AerospikeStore {
                 return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, setName, key));
             });
 
-            return null == firedRecord ? Optional.empty() : Optional.of(record.getValue(Constants.DATA));
+            return null == firedRecord ? Optional.empty() : Optional.of(firedRecord.getValue(Constants.DATA));
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
