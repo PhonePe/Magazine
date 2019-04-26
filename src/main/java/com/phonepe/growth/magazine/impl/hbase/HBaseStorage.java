@@ -5,9 +5,9 @@ import com.phonepe.growth.magazine.core.MagazineType;
 
 import java.util.Optional;
 
-public class HBaseMagazine extends BaseMagazineStorage {
+public class HBaseStorage extends BaseMagazineStorage {
 
-    public HBaseMagazine() {
+    public HBaseStorage() {
         super(MagazineType.HBASE);
     }
 

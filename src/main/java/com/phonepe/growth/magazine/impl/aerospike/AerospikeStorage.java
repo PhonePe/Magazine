@@ -6,17 +6,22 @@ import com.aerospike.client.policy.WritePolicy;
 import com.github.rholder.retry.*;
 import com.google.common.base.Joiner;
 import com.phonepe.growth.magazine.common.Constants;
+import com.phonepe.growth.magazine.core.BaseMagazineStorage;
+import com.phonepe.growth.magazine.core.MagazineType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 @Data
-public class AerospikeStore {
+@EqualsAndHashCode(callSuper = true)
+public class AerospikeStorage extends BaseMagazineStorage {
+
     private final AerospikeClient aerospikeClient;
     private final String namespace;
     private final String dataSetName;
@@ -25,7 +30,9 @@ public class AerospikeStore {
     private final Retryer<Record> readRetryer;
 
     @Builder
-    public AerospikeStore(final AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName) {
+    public AerospikeStorage(AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName) {
+        super(MagazineType.AEROSPIKE);
+
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
         this.dataSetName = dataSetName;
@@ -44,7 +51,37 @@ public class AerospikeStore {
                 .build();
     }
 
-    public boolean loadDataToAerospike(String keyPrefix, Object data) {
+    @Override
+    public boolean prepare(String keyPrefix) {
+        try {
+            return writeRetryer.call(() -> {
+                final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
+                writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
+
+                final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
+                aerospikeClient.operate(writePolicy,
+                        new Key(namespace, metaSetName, key),
+                        Operation.put(new Bin(Constants.LOAD_POINTER, 0L)),
+                        Operation.put(new Bin(Constants.FIRE_POINTER, 0L)));
+                return true;
+            });
+        } catch (RetryException re) {
+            throw MagazineException.builder()
+                    .cause(re)
+                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
+                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
+                    .build();
+        } catch (ExecutionException e) {
+            throw MagazineException.builder()
+                    .cause(e)
+                    .errorCode(ErrorCode.CONNECTION_ERROR)
+                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
+                    .build();
+        }
+    }
+
+    @Override
+    public boolean load(String keyPrefix, Object data) {
         try {
             Record record = readRetryer.call(() -> {
                 final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
@@ -88,7 +125,8 @@ public class AerospikeStore {
         }
     }
 
-    public Optional<Object> fireDataFromAerospike(String keyPrefix) {
+    @Override
+    public Optional<Object> fire(String keyPrefix) {
         try {
             Record pointerRecord = readRetryer.call(() -> {
                 final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
@@ -134,34 +172,6 @@ public class AerospikeStore {
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
                     .message(String.format("Error firing data [keyPrefix = %s]", keyPrefix))
-                    .build();
-        }
-    }
-
-    public boolean initPointers(String keyPrefix) {
-        try {
-            return writeRetryer.call(() -> {
-                final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
-                writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
-
-                final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
-                aerospikeClient.operate(writePolicy,
-                        new Key(namespace, metaSetName, key),
-                        Operation.put(new Bin(Constants.LOAD_POINTER, 0L)),
-                        Operation.put(new Bin(Constants.FIRE_POINTER, 0L)));
-                return true;
-            });
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
                     .build();
         }
     }
