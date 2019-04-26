@@ -19,15 +19,17 @@ import java.util.concurrent.TimeUnit;
 public class AerospikeStore {
     private final AerospikeClient aerospikeClient;
     private final String namespace;
-    private final String setName;
+    private final String dataSetName;
+    private final String metaSetName;
     private final Retryer<Boolean> writeRetryer;
     private final Retryer<Record> readRetryer;
 
     @Builder
-    public AerospikeStore(final AerospikeClient aerospikeClient, String namespace, String setName) {
+    public AerospikeStore(final AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName) {
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
-        this.setName = setName;
+        this.dataSetName = dataSetName;
+        this.metaSetName = metaSetName;
         writeRetryer = RetryerBuilder.<Boolean>newBuilder()
                 .retryIfExceptionOfType(AerospikeException.class)
                 .withStopStrategy(StopStrategies.stopAfterAttempt(Constants.MAX_RETRIES))
@@ -49,7 +51,7 @@ public class AerospikeStore {
                 writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                 String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
                 return aerospikeClient.operate(writePolicy,
-                        new Key(namespace, setName, key),
+                        new Key(namespace, metaSetName, key),
                         Operation.add(new Bin(Constants.LOAD_POINTER, 1L)),
                         Operation.get(Constants.LOAD_POINTER));
             });
@@ -66,7 +68,7 @@ public class AerospikeStore {
                 writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
                 final String key = Joiner.on("_").join(keyPrefix, record.getLong(Constants.LOAD_POINTER));
                 aerospikeClient.put(writePolicy,
-                        new Key(namespace, setName, key),
+                        new Key(namespace, dataSetName, key),
                         new Bin(Constants.DATA, data),
                         new Bin(Constants.MODIFIED_AT, System.currentTimeMillis()));
                 return true;
@@ -90,7 +92,7 @@ public class AerospikeStore {
         try {
             Record pointerRecord = readRetryer.call(() -> {
                 final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
-                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, setName, key));
+                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
             });
 
             long loadPointer = pointerRecord.getLong(Constants.LOAD_POINTER);
@@ -109,7 +111,7 @@ public class AerospikeStore {
 
                 final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
                 return aerospikeClient.operate(writePolicy,
-                        new Key(namespace, setName, key),
+                        new Key(namespace, metaSetName, key),
                         Operation.add(new Bin(Constants.FIRE_POINTER, 1)),
                         Operation.get(Constants.FIRE_POINTER));
             });
@@ -117,7 +119,7 @@ public class AerospikeStore {
             //Fire data
             Record firedRecord = readRetryer.call(() -> {
                 String key = Joiner.on("_").join(keyPrefix, record.getLong(Constants.FIRE_POINTER));
-                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, setName, key));
+                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
             });
 
             return null == firedRecord ? Optional.empty() : Optional.of(firedRecord.getValue(Constants.DATA));
@@ -144,7 +146,7 @@ public class AerospikeStore {
 
                 final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
                 aerospikeClient.operate(writePolicy,
-                        new Key(namespace, setName, key),
+                        new Key(namespace, metaSetName, key),
                         Operation.put(new Bin(Constants.LOAD_POINTER, 0L)),
                         Operation.put(new Bin(Constants.FIRE_POINTER, 0L)));
                 return true;
