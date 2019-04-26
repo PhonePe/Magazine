@@ -1,6 +1,6 @@
 package com.phonepe.growth.magazine;
 
-import com.phonepe.growth.magazine.core.BaseMagazine;
+import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,23 +9,23 @@ import java.util.Optional;
 @Data
 public class Magazine {
     private final String clientId;
-    private final BaseMagazine baseMagazine;
+    private final BaseMagazineStorage baseMagazineStorage;
 
     @Builder
-    public Magazine(String clientId, BaseMagazine baseMagazine) {
+    public Magazine(String clientId, BaseMagazineStorage baseMagazineStorage) {
         this.clientId = clientId;
-        this.baseMagazine = baseMagazine;
+        this.baseMagazineStorage = baseMagazineStorage;
     }
 
     public boolean prepare(String keyPrefix) {
-        return baseMagazine.prepare(keyPrefix);
+        return baseMagazineStorage.prepare(keyPrefix);
     }
 
     public boolean load(String keyPrefix, Object data) {
-        return baseMagazine.load(keyPrefix, data);
+        return baseMagazineStorage.load(keyPrefix, data);
     }
 
     public Optional<Object> fire(String keyPrefix) {
-        return baseMagazine.fire(keyPrefix);
+        return baseMagazineStorage.fire(keyPrefix);
     }
 }

@@ -1,11 +1,11 @@
 package com.phonepe.growth.magazine.impl.hbase;
 
-import com.phonepe.growth.magazine.core.BaseMagazine;
+import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.MagazineType;
 
 import java.util.Optional;
 
-public class HBaseMagazine extends BaseMagazine {
+public class HBaseMagazine extends BaseMagazineStorage {
 
     public HBaseMagazine() {
         super(MagazineType.HBASE);

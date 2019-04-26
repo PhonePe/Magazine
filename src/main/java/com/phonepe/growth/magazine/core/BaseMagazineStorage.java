@@ -15,10 +15,10 @@ import lombok.ToString;
 @JsonSubTypes({
         @JsonSubTypes.Type(value = AerospikeMagazine.class, name = MagazineType.AEROSPIKE_TEXT),
         @JsonSubTypes.Type(value = HBaseMagazine.class, name = MagazineType.HBASE_TEXT), })
-public abstract class BaseMagazine implements IMagazine {
+public abstract class BaseMagazineStorage implements IMagazine {
     private final MagazineType type;
 
-    public BaseMagazine(MagazineType type) {
+    public BaseMagazineStorage(MagazineType type) {
         this.type = type;
     }
 }
