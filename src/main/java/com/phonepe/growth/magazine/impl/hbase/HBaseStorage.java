@@ -1,5 +1,6 @@
 package com.phonepe.growth.magazine.impl.hbase;
 
+import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.MagazineType;
 
@@ -22,7 +23,17 @@ public class HBaseStorage extends BaseMagazineStorage {
     }
 
     @Override
+    public boolean reload(String keyPrefix, Object data) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Optional<Object> fire(String keyPrefix) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MetaData getMetaData(String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 }

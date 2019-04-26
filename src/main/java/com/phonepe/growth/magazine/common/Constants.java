@@ -5,6 +5,9 @@ public interface Constants {
     String MODIFIED_AT = "modified_at";
 
     String POINTERS = "POINTERS";
+    String COUNTERS = "COUNTERS";
+    String LOAD_COUNTER = "LOAD_COUNTER";
+    String FIRE_COUNTER = "FIRE_COUNTER";
     String LOAD_POINTER = "LOAD_POINTER";
     String FIRE_POINTER = "FIRE_POINTER";
 

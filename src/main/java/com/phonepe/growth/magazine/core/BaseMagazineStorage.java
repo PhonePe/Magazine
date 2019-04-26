@@ -2,6 +2,7 @@ package com.phonepe.growth.magazine.core;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.growth.magazine.impl.hbase.HBaseStorage;
 import lombok.Data;
@@ -28,5 +29,9 @@ public abstract class BaseMagazineStorage {
 
     public abstract boolean load(String keyPrefix, Object data);
 
+    public abstract boolean reload(String keyPrefix, Object data);
+
     public abstract Optional<Object> fire(String keyPrefix);
+
+    public abstract MetaData getMetaData(String keyPrefix);
 }

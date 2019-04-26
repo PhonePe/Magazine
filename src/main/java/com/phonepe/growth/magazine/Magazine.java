@@ -1,5 +1,6 @@
 package com.phonepe.growth.magazine;
 
+import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import lombok.Builder;
 import lombok.Data;
@@ -25,7 +26,15 @@ public class Magazine {
         return baseMagazineStorage.load(keyPrefix, data);
     }
 
+    public boolean reload(String keyPrefix, Object data) {
+        return baseMagazineStorage.reload(keyPrefix, data);
+    }
+
     public Optional<Object> fire(String keyPrefix) {
         return baseMagazineStorage.fire(keyPrefix);
+    }
+
+    public MetaData getMetaData(String keyPrefix) {
+        return baseMagazineStorage.getMetaData(keyPrefix);
     }
 }
