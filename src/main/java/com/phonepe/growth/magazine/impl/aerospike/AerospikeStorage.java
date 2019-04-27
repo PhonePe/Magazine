@@ -101,9 +101,8 @@ public class AerospikeStorage extends BaseMagazineStorage {
     @Override
     public boolean load(String keyPrefix, Object data) {
         try {
-            Record record = incrementAndGetLoadPointer(keyPrefix);
-            boolean success = loadData(keyPrefix, data, record);
-            incrementCounter(keyPrefix);
+            boolean success = loadData(keyPrefix, data);
+            incrementLoadCounter(keyPrefix);
             return success;
         } catch (RetryException re) {
             throw MagazineException.builder()
@@ -123,8 +122,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
     @Override
     public boolean reload(String keyPrefix, Object data){
         try {
-            Record record = incrementAndGetLoadPointer(keyPrefix);
-            return loadData(keyPrefix, data, record);
+            return loadData(keyPrefix, data);
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
@@ -140,7 +138,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
         }
     }
 
-    private void incrementCounter(String keyPrefix) throws ExecutionException, RetryException {
+    private void incrementLoadCounter(String keyPrefix) throws ExecutionException, RetryException {
         Record record = readRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -159,11 +157,12 @@ public class AerospikeStorage extends BaseMagazineStorage {
         }
     }
 
-    private boolean loadData(String keyPrefix, Object data, Record record) throws ExecutionException, RetryException {
+    private boolean loadData(String keyPrefix, Object data) throws ExecutionException, RetryException {
+        long loadPointer = incrementAndGetLoadPointer(keyPrefix);
         return writeRetryer.call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
-                    final String key = Joiner.on("_").join(keyPrefix, record.getLong(Constants.LOAD_POINTER));
+                    final String key = Joiner.on("_").join(keyPrefix, loadPointer);
                     aerospikeClient.put(writePolicy,
                             new Key(namespace, dataSetName, key),
                             new Bin(Constants.DATA, data),
@@ -172,7 +171,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
                 });
     }
 
-    private Record incrementAndGetLoadPointer(String keyPrefix) throws ExecutionException, RetryException {
+    private long incrementAndGetLoadPointer(String keyPrefix) throws ExecutionException, RetryException {
         Record record = readRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -189,7 +188,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
                     .message(String.format("Error reading pointers [keyPrefix = %s]", keyPrefix))
                     .build();
         }
-        return record;
+        return record.getLong(Constants.LOAD_POINTER);
     }
 
     @Override
