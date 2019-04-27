@@ -53,9 +53,6 @@ public class AerospikeStorage extends BaseMagazineStorage {
                 .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
         fireRetryer = RetryerBuilder.<Record>newBuilder()
-                .retryIfExceptionOfType(AerospikeException.class)
-                .retryIfExceptionOfType(RetryException.class)
-                .retryIfExceptionOfType(ExecutionException.class)
                 .retryIfResult(Predicates.isNull())
                 .withStopStrategy(StopStrategies.neverStop())
                 .withWaitStrategy(WaitStrategies.fixedWait(Constants.DELAY_BETWEEN_RETRIES, TimeUnit.MILLISECONDS))
