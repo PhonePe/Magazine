@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MetaData {
-    long fireCounter;
-    long loadCounter;
+    private long fireCounter;
+    private long loadCounter;
 }
