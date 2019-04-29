@@ -6,7 +6,7 @@ import com.phonepe.growth.magazine.core.MagazineType;
 
 import java.util.Optional;
 
-public class HBaseStorage extends BaseMagazineStorage {
+public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
     public HBaseStorage() {
         super(MagazineType.HBASE);
@@ -18,17 +18,17 @@ public class HBaseStorage extends BaseMagazineStorage {
     }
 
     @Override
-    public boolean load(String keyPrefix, Object data) {
+    public boolean load(String keyPrefix, T data) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public boolean reload(String keyPrefix, Object data) {
+    public boolean reload(String keyPrefix, T data) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Optional<Object> fire(String keyPrefix) {
+    public Optional<T> fire(String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 

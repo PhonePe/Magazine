@@ -8,12 +8,12 @@ import lombok.Data;
 import java.util.Optional;
 
 @Data
-public class Magazine {
+public class Magazine<T> {
     private final String clientId;
-    private final BaseMagazineStorage baseMagazineStorage;
+    private final BaseMagazineStorage<T> baseMagazineStorage;
 
     @Builder
-    public Magazine(String clientId, BaseMagazineStorage baseMagazineStorage) {
+    public Magazine(String clientId, BaseMagazineStorage<T> baseMagazineStorage) {
         this.clientId = clientId;
         this.baseMagazineStorage = baseMagazineStorage;
     }
@@ -22,15 +22,15 @@ public class Magazine {
         return baseMagazineStorage.prepare(keyPrefix);
     }
 
-    public boolean load(String keyPrefix, Object data) {
+    public boolean load(String keyPrefix, T data) {
         return baseMagazineStorage.load(keyPrefix, data);
     }
 
-    public boolean reload(String keyPrefix, Object data) {
+    public boolean reload(String keyPrefix, T data) {
         return baseMagazineStorage.reload(keyPrefix, data);
     }
 
-    public Optional<Object> fire(String keyPrefix) {
+    public Optional<T> fire(String keyPrefix) {
         return baseMagazineStorage.fire(keyPrefix);
     }
 

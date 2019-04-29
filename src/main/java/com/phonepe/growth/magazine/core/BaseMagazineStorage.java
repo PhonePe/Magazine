@@ -18,7 +18,7 @@ import java.util.Optional;
 @JsonSubTypes({
         @JsonSubTypes.Type(value = AerospikeStorage.class, name = MagazineType.AEROSPIKE_TEXT),
         @JsonSubTypes.Type(value = HBaseStorage.class, name = MagazineType.HBASE_TEXT), })
-public abstract class BaseMagazineStorage {
+public abstract class BaseMagazineStorage<T> {
     private final MagazineType type;
 
     public BaseMagazineStorage(MagazineType type) {
@@ -27,11 +27,11 @@ public abstract class BaseMagazineStorage {
 
     public abstract boolean prepare(String keyPrefix);
 
-    public abstract boolean load(String keyPrefix, Object data);
+    public abstract boolean load(String keyPrefix, T data);
 
-    public abstract boolean reload(String keyPrefix, Object data);
+    public abstract boolean reload(String keyPrefix, T data);
 
-    public abstract Optional<Object> fire(String keyPrefix);
+    public abstract Optional<T> fire(String keyPrefix);
 
     public abstract MetaData getMetaData(String keyPrefix);
 }
