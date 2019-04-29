@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class AerospikeStorage extends BaseMagazineStorage {
+public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     private final AerospikeClient aerospikeClient;
     private final String namespace;
@@ -31,9 +31,10 @@ public class AerospikeStorage extends BaseMagazineStorage {
     private final Retryer<Boolean> writeRetryer;
     private final Retryer<Record> readRetryer;
     private final Retryer<Record> fireRetryer;
+    private final Class<T> clazz;
 
     @Builder
-    public AerospikeStorage(AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName) {
+    public AerospikeStorage(AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName, Class<T> klass) {
         super(MagazineType.AEROSPIKE);
 
         this.aerospikeClient = aerospikeClient;
@@ -58,6 +59,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
                 .withWaitStrategy(WaitStrategies.fixedWait(Constants.DELAY_BETWEEN_RETRIES, TimeUnit.MILLISECONDS))
                 .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
+        clazz = klass;
     }
 
     @Override
@@ -96,7 +98,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
     }
 
     @Override
-    public boolean load(String keyPrefix, Object data) {
+    public boolean load(String keyPrefix, T data) {
         try {
             long loadPointer = incrementAndGetLoadPointer(keyPrefix);
             final String key = Joiner.on("_").join(keyPrefix, loadPointer);
@@ -119,7 +121,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
     }
 
     @Override
-    public boolean reload(String keyPrefix, Object data){
+    public boolean reload(String keyPrefix, T data){
         try {
             long loadPointer = incrementAndGetLoadPointer(keyPrefix);
             final String key = Joiner.on("_").join(keyPrefix, loadPointer);
@@ -140,8 +142,8 @@ public class AerospikeStorage extends BaseMagazineStorage {
     }
 
     @Override
-    public Optional<Object> fire(String keyPrefix) {
-        return Optional.of(fireWithRetry(keyPrefix).getValue(Constants.DATA));
+    public Optional<T> fire(String keyPrefix) {
+        return Optional.of(clazz.cast(fireWithRetry(keyPrefix).getValue(Constants.DATA)));
     }
 
     @Override
@@ -241,7 +243,7 @@ public class AerospikeStorage extends BaseMagazineStorage {
         }
     }
 
-    private boolean loadData(final String key, Object data) throws ExecutionException, RetryException {
+    private boolean loadData(final String key, T data) throws ExecutionException, RetryException {
         return writeRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
