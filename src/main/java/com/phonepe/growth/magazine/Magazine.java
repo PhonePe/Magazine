@@ -20,10 +20,6 @@ public class Magazine<T> {
         this.magazineIdentifier = magazineIdentifier;
     }
 
-    public boolean prepare() {
-        return baseMagazineStorage.prepare(magazineIdentifier);
-    }
-
     public boolean load(T data) {
         return baseMagazineStorage.load(magazineIdentifier, data);
     }

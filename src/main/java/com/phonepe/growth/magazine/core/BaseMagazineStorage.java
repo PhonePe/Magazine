@@ -27,8 +27,6 @@ public abstract class BaseMagazineStorage<T> {
         this.recordTtl = recordTtl;
     }
 
-    public abstract boolean prepare(String magazineIdentifier);
-
     public abstract boolean load(String magazineIdentifier, T data);
 
     public abstract boolean reload(String magazineIdentifier, T data);

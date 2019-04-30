@@ -68,41 +68,6 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean prepare(String magazineIdentifier) {
-        try {
-            return writeRetryer.call(() -> {
-                final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
-                writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
-
-                final String pointerKey = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
-                aerospikeClient.operate(writePolicy,
-                        new Key(namespace, metaSetName, pointerKey),
-                        Operation.put(new Bin(Constants.LOAD_POINTER, 0L)),
-                        Operation.put(new Bin(Constants.FIRE_POINTER, 0L)));
-
-                final String counterKey = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
-                aerospikeClient.operate(writePolicy,
-                        new Key(namespace, metaSetName, counterKey),
-                        Operation.put(new Bin(Constants.LOAD_COUNTER, 0L)),
-                        Operation.put(new Bin(Constants.FIRE_COUNTER, 0L)));
-                return true;
-            });
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error writing pointers [magazineIdentifier = %s]", magazineIdentifier))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error writing pointers [magazineIdentifier = %s]", magazineIdentifier))
-                    .build();
-        }
-    }
-
-    @Override
     public boolean load(String magazineIdentifier, T data) {
         try {
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
