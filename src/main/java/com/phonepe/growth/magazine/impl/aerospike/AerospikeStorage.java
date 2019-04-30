@@ -68,19 +68,19 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean prepare(String keyPrefix) {
+    public boolean prepare(String magazineIdentifier) {
         try {
             return writeRetryer.call(() -> {
                 final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
                 writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
 
-                final String pointerKey = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
+                final String pointerKey = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
                 aerospikeClient.operate(writePolicy,
                         new Key(namespace, metaSetName, pointerKey),
                         Operation.put(new Bin(Constants.LOAD_POINTER, 0L)),
                         Operation.put(new Bin(Constants.FIRE_POINTER, 0L)));
 
-                final String counterKey = Joiner.on("_").join(keyPrefix, Constants.COUNTERS);
+                final String counterKey = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
                 aerospikeClient.operate(writePolicy,
                         new Key(namespace, metaSetName, counterKey),
                         Operation.put(new Bin(Constants.LOAD_COUNTER, 0L)),
@@ -91,71 +91,71 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error writing pointers [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error writing pointers [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error writing pointers [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
 
     @Override
-    public boolean load(String keyPrefix, T data) {
+    public boolean load(String magazineIdentifier, T data) {
         try {
-            long loadPointer = incrementAndGetLoadPointer(keyPrefix);
-            final String key = Joiner.on("_").join(keyPrefix, loadPointer);
+            long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
+            final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
             boolean success = loadData(key, data);
-            incrementLoadCounter(keyPrefix);
+            incrementLoadCounter(magazineIdentifier);
             return success;
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
 
     @Override
-    public boolean reload(String keyPrefix, T data){
+    public boolean reload(String magazineIdentifier, T data){
         try {
-            long loadPointer = incrementAndGetLoadPointer(keyPrefix);
-            final String key = Joiner.on("_").join(keyPrefix, loadPointer);
+            long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
+            final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
             return loadData(key, data);
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
 
     @Override
-    public Optional<T> fire(String keyPrefix) {
-        return Optional.of(clazz.cast(fireWithRetry(keyPrefix).getValue(Constants.DATA)));
+    public Optional<T> fire(String magazineIdentifier) {
+        return Optional.of(clazz.cast(fireWithRetry(magazineIdentifier).getValue(Constants.DATA)));
     }
 
     @Override
-    public MetaData getMetaData(String keyPrefix){
+    public MetaData getMetaData(String magazineIdentifier){
         try{
             Record counterRecord = readRetryer.call(() -> {
-                final String key = Joiner.on("_").join(keyPrefix, Constants.COUNTERS);
+                final String key = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
                 return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
             });
 
@@ -167,22 +167,22 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error loading data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
 
-    private Record fireWithRetry(String keyPrefix) {
+    private Record fireWithRetry(String magazineIdentifier) {
         try {
             return fireRetryer.call(() -> {
                 Record pointerRecord = readRetryer.call(() -> {
-                    final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
+                    final String key = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
                     return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
                 });
 
@@ -192,7 +192,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 if (firePointer >= loadPointer) {
                     throw MagazineException.builder()
                             .errorCode(ErrorCode.NOTHING_TO_FIRE)
-                            .message(String.format("No data to fire [keyPrefix = %s]", keyPrefix))
+                            .message(String.format("No data to fire [magazineIdentifier = %s]", magazineIdentifier))
                             .build();
                 }
 
@@ -200,7 +200,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
 
-                    final String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
+                    final String key = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
                             Operation.add(new Bin(Constants.FIRE_POINTER, 1)),
@@ -209,7 +209,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
                 //Fire data
                 return readRetryer.call(() -> {
-                    String key = Joiner.on("_").join(keyPrefix, record.getLong(Constants.FIRE_POINTER));
+                    String key = Joiner.on("_").join(magazineIdentifier, record.getLong(Constants.FIRE_POINTER));
                     return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
                 });
             });
@@ -218,23 +218,23 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error firing data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error firing data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error firing data [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error firing data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
 
 
-    private void incrementLoadCounter(String keyPrefix) throws ExecutionException, RetryException {
+    private void incrementLoadCounter(String magazineIdentifier) throws ExecutionException, RetryException {
         Record record = readRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
-            String key = Joiner.on("_").join(keyPrefix, Constants.COUNTERS);
+            String key = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
             return aerospikeClient.operate(writePolicy,
                     new Key(namespace, metaSetName, key),
                     Operation.add(new Bin(Constants.LOAD_COUNTER, 1L)),
@@ -244,7 +244,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format("Error reading counters [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error reading counters [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
@@ -262,11 +262,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         });
     }
 
-    private long incrementAndGetLoadPointer(String keyPrefix) throws ExecutionException, RetryException {
+    private long incrementAndGetLoadPointer(String magazineIdentifier) throws ExecutionException, RetryException {
         Record record = readRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
-            String key = Joiner.on("_").join(keyPrefix, Constants.POINTERS);
+            String key = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
             return aerospikeClient.operate(writePolicy,
                     new Key(namespace, metaSetName, key),
                     Operation.add(new Bin(Constants.LOAD_POINTER, 1L)),
@@ -276,7 +276,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format("Error reading pointers [keyPrefix = %s]", keyPrefix))
+                    .message(String.format("Error reading pointers [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
         return record.getLong(Constants.LOAD_POINTER);

@@ -27,13 +27,13 @@ public abstract class BaseMagazineStorage<T> {
         this.recordTtl = recordTtl;
     }
 
-    public abstract boolean prepare(String keyPrefix);
+    public abstract boolean prepare(String magazineIdentifier);
 
-    public abstract boolean load(String keyPrefix, T data);
+    public abstract boolean load(String magazineIdentifier, T data);
 
-    public abstract boolean reload(String keyPrefix, T data);
+    public abstract boolean reload(String magazineIdentifier, T data);
 
-    public abstract Optional<T> fire(String keyPrefix);
+    public abstract Optional<T> fire(String magazineIdentifier);
 
-    public abstract MetaData getMetaData(String keyPrefix);
+    public abstract MetaData getMetaData(String magazineIdentifier);
 }
