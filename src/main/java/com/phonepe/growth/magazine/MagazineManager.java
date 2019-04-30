@@ -5,6 +5,7 @@ import com.phonepe.growth.magazine.exception.MagazineException;
 import lombok.Data;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -14,6 +15,10 @@ public class MagazineManager {
 
     public MagazineManager(String clientId) {
         this.clientId = clientId;
+    }
+
+    public void refresh(List<Magazine<?>> magazines) {
+        magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
     public void ensureMagazine(Magazine<?> magazine) {
