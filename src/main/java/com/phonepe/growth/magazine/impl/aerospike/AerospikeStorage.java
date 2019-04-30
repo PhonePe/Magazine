@@ -125,20 +125,20 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             });
 
             return MetaData.builder()
-                    .fireCounter(counterRecord.getLong(Constants.FIRE_COUNTER))
-                    .loadCounter(counterRecord.getLong(Constants.LOAD_COUNTER))
+                    .fireCounter(counterRecord != null ? counterRecord.getLong(Constants.FIRE_COUNTER) : 0L)
+                    .loadCounter(counterRecord != null ? counterRecord.getLong(Constants.LOAD_COUNTER) : 0L)
                     .build();
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
+                    .message(String.format("Error getting meta data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
             throw MagazineException.builder()
                     .cause(e)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
+                    .message(String.format("Error getting meta data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
     }
