@@ -21,12 +21,6 @@ public class MagazineManager {
         magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
-    public void ensureMagazine(Magazine<?> magazine) {
-        if(!magazineMap.containsKey(magazine.getMagazineIdentifier())) {
-            magazineMap.put(magazine.getMagazineIdentifier(), magazine);
-        }
-    }
-
     public Magazine<?> getMagazine(String magazineIdentifier) {
         try {
             return magazineMap.get(magazineIdentifier);
