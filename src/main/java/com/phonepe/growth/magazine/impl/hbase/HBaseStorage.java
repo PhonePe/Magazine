@@ -2,19 +2,14 @@ package com.phonepe.growth.magazine.impl.hbase;
 
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
-import com.phonepe.growth.magazine.core.MagazineType;
+import com.phonepe.growth.magazine.core.StorageType;
 
 import java.util.Optional;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
-    public HBaseStorage() {
-        super(MagazineType.HBASE);
-    }
-
-    @Override
-    public boolean prepare(String keyPrefix) {
-        throw new UnsupportedOperationException();
+    public HBaseStorage(int recordTtl) {
+        super(StorageType.HBASE, recordTtl);
     }
 
     @Override

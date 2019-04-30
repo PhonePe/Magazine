@@ -16,22 +16,22 @@ import java.util.Optional;
 @ToString
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "type")
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = AerospikeStorage.class, name = MagazineType.AEROSPIKE_TEXT),
-        @JsonSubTypes.Type(value = HBaseStorage.class, name = MagazineType.HBASE_TEXT), })
+        @JsonSubTypes.Type(value = AerospikeStorage.class, name = StorageType.AEROSPIKE_TEXT),
+        @JsonSubTypes.Type(value = HBaseStorage.class, name = StorageType.HBASE_TEXT), })
 public abstract class BaseMagazineStorage<T> {
-    private final MagazineType type;
+    private final StorageType type;
+    private final int recordTtl;
 
-    public BaseMagazineStorage(MagazineType type) {
+    public BaseMagazineStorage(StorageType type, int recordTtl) {
         this.type = type;
+        this.recordTtl = recordTtl;
     }
 
-    public abstract boolean prepare(String keyPrefix);
+    public abstract boolean load(String magazineIdentifier, T data);
 
-    public abstract boolean load(String keyPrefix, T data);
+    public abstract boolean reload(String magazineIdentifier, T data);
 
-    public abstract boolean reload(String keyPrefix, T data);
+    public abstract Optional<T> fire(String magazineIdentifier);
 
-    public abstract Optional<T> fire(String keyPrefix);
-
-    public abstract MetaData getMetaData(String keyPrefix);
+    public abstract MetaData getMetaData(String magazineIdentifier);
 }
