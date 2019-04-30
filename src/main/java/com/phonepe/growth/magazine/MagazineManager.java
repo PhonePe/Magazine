@@ -21,9 +21,15 @@ public class MagazineManager {
         magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
-    public Magazine<?> getMagazine(String magazineIdentifier) {
+    public <T> Magazine<T> getMagazine(String magazineIdentifier, Class<T> klass) {
         try {
-            return magazineMap.get(magazineIdentifier);
+            return (Magazine<T>) (magazineMap.get(magazineIdentifier));
+        } catch (ClassCastException e) {
+            throw MagazineException.builder()
+                    .message(String.format("Unable to provide magazine of required storage type for %s", magazineIdentifier))
+                    .errorCode(ErrorCode.STORAGE_TYPE_MISMATCH)
+                    .cause(e)
+                    .build();
         } catch (Exception e) {
             throw MagazineException.builder()
                     .message(String.format("Magazine not found for identifier %s", magazineIdentifier))
