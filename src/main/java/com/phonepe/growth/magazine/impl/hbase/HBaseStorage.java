@@ -13,11 +13,6 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean prepare(String keyPrefix) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public boolean load(String keyPrefix, T data) {
         throw new UnsupportedOperationException();
     }
