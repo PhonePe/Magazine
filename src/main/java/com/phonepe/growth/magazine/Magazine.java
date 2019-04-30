@@ -11,30 +11,32 @@ import java.util.Optional;
 public class Magazine<T> {
     private final String clientId;
     private final BaseMagazineStorage<T> baseMagazineStorage;
+    private final String magazineIdentifier;
 
     @Builder
-    public Magazine(String clientId, BaseMagazineStorage<T> baseMagazineStorage) {
+    public Magazine(String clientId, BaseMagazineStorage<T> baseMagazineStorage, String magazineIdentifier) {
         this.clientId = clientId;
         this.baseMagazineStorage = baseMagazineStorage;
+        this.magazineIdentifier = magazineIdentifier;
     }
 
-    public boolean prepare(String keyPrefix) {
-        return baseMagazineStorage.prepare(keyPrefix);
+    public boolean prepare() {
+        return baseMagazineStorage.prepare(magazineIdentifier);
     }
 
-    public boolean load(String keyPrefix, T data) {
-        return baseMagazineStorage.load(keyPrefix, data);
+    public boolean load(T data) {
+        return baseMagazineStorage.load(magazineIdentifier, data);
     }
 
-    public boolean reload(String keyPrefix, T data) {
-        return baseMagazineStorage.reload(keyPrefix, data);
+    public boolean reload(T data) {
+        return baseMagazineStorage.reload(magazineIdentifier, data);
     }
 
-    public Optional<T> fire(String keyPrefix) {
-        return baseMagazineStorage.fire(keyPrefix);
+    public Optional<T> fire() {
+        return baseMagazineStorage.fire(magazineIdentifier);
     }
 
-    public MetaData getMetaData(String keyPrefix) {
-        return baseMagazineStorage.getMetaData(keyPrefix);
+    public MetaData getMetaData() {
+        return baseMagazineStorage.getMetaData(magazineIdentifier);
     }
 }

@@ -8,8 +8,8 @@ import java.util.Optional;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
-    public HBaseStorage() {
-        super(StorageType.HBASE);
+    public HBaseStorage(int recordTtl) {
+        super(StorageType.HBASE, recordTtl);
     }
 
     @Override

@@ -34,8 +34,13 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final Class<T> clazz;
 
     @Builder
-    public AerospikeStorage(AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName, Class<T> klass) {
-        super(StorageType.AEROSPIKE);
+    public AerospikeStorage(AerospikeClient aerospikeClient,
+                            String namespace,
+                            String dataSetName,
+                            String metaSetName,
+                            Class<T> klass,
+                            int recordTtl) {
+        super(StorageType.AEROSPIKE, recordTtl);
 
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
@@ -248,6 +253,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         return writeRetryer.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
+            writePolicy.expiration = getRecordTtl();
             aerospikeClient.put(writePolicy,
                     new Key(namespace, dataSetName, key),
                     new Bin(Constants.DATA, data),

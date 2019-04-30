@@ -20,9 +20,11 @@ import java.util.Optional;
         @JsonSubTypes.Type(value = HBaseStorage.class, name = StorageType.HBASE_TEXT), })
 public abstract class BaseMagazineStorage<T> {
     private final StorageType type;
+    private final int recordTtl;
 
-    public BaseMagazineStorage(StorageType type) {
+    public BaseMagazineStorage(StorageType type, int recordTtl) {
         this.type = type;
+        this.recordTtl = recordTtl;
     }
 
     public abstract boolean prepare(String keyPrefix);
