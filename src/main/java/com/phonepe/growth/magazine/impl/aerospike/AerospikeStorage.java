@@ -9,7 +9,7 @@ import com.google.common.base.Predicates;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
-import com.phonepe.growth.magazine.core.MagazineType;
+import com.phonepe.growth.magazine.core.StorageType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import lombok.Builder;
@@ -35,7 +35,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Builder
     public AerospikeStorage(AerospikeClient aerospikeClient, String namespace, String dataSetName, String metaSetName, Class<T> klass) {
-        super(MagazineType.AEROSPIKE);
+        super(StorageType.AEROSPIKE);
 
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;

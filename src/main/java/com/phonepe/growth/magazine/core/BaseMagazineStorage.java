@@ -16,12 +16,12 @@ import java.util.Optional;
 @ToString
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "type")
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = AerospikeStorage.class, name = MagazineType.AEROSPIKE_TEXT),
-        @JsonSubTypes.Type(value = HBaseStorage.class, name = MagazineType.HBASE_TEXT), })
+        @JsonSubTypes.Type(value = AerospikeStorage.class, name = StorageType.AEROSPIKE_TEXT),
+        @JsonSubTypes.Type(value = HBaseStorage.class, name = StorageType.HBASE_TEXT), })
 public abstract class BaseMagazineStorage<T> {
-    private final MagazineType type;
+    private final StorageType type;
 
-    public BaseMagazineStorage(MagazineType type) {
+    public BaseMagazineStorage(StorageType type) {
         this.type = type;
     }
 
