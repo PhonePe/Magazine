@@ -91,7 +91,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean reload(String magazineIdentifier, T data){
+    public boolean reload(String magazineIdentifier, T data) {
         try {
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
             final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
@@ -117,16 +117,23 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public MetaData getMetaData(String magazineIdentifier){
-        try{
+    public MetaData getMetaData(String magazineIdentifier) {
+        try {
             Record counterRecord = readRetryer.call(() -> {
                 final String key = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
+                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
+            });
+
+            Record pointerRecord = readRetryer.call(() -> {
+                final String key = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
                 return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
             });
 
             return MetaData.builder()
                     .fireCounter(counterRecord != null ? counterRecord.getLong(Constants.FIRE_COUNTER) : 0L)
                     .loadCounter(counterRecord != null ? counterRecord.getLong(Constants.LOAD_COUNTER) : 0L)
+                    .firePointer(pointerRecord != null ? pointerRecord.getLong(Constants.FIRE_POINTER) : 0L)
+                    .loadPointer(pointerRecord != null ? pointerRecord.getLong(Constants.LOAD_POINTER) : 0L)
                     .build();
         } catch (RetryException re) {
             throw MagazineException.builder()
@@ -178,8 +185,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
                 });
             });
-        }
-        catch (RetryException re) {
+        } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
