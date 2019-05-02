@@ -124,9 +124,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
             });
 
+            Record pointerRecord = readRetryer.call(() -> {
+                final String key = Joiner.on("_").join(magazineIdentifier, Constants.POINTERS);
+                return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
+            });
+
             return MetaData.builder()
                     .fireCounter(counterRecord != null ? counterRecord.getLong(Constants.FIRE_COUNTER) : 0L)
                     .loadCounter(counterRecord != null ? counterRecord.getLong(Constants.LOAD_COUNTER) : 0L)
+                    .firePointer(pointerRecord != null ? pointerRecord.getLong(Constants.FIRE_POINTER): 0L)
+                    .loadPointer(pointerRecord != null ? pointerRecord.getLong(Constants.LOAD_POINTER): 0L)
                     .build();
         } catch (RetryException re) {
             throw MagazineException.builder()
