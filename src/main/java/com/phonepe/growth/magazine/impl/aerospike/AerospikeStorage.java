@@ -95,7 +95,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
             final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
-            return loadData(key, data);
+            boolean success = loadData(key, data);
+            decrementFireCounter(magazineIdentifier);
+            return success;
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
@@ -180,10 +182,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 });
 
                 //Fire data
-                return readRetryer.call(() -> {
-                    String key = Joiner.on("_").join(magazineIdentifier, record.getLong(Constants.FIRE_POINTER));
-                    return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
-                });
+                Record firedData = fireData(magazineIdentifier, record);
+                incrementFireCounter(magazineIdentifier);
+                return firedData;
             });
         } catch (RetryException re) {
             throw MagazineException.builder()
@@ -198,6 +199,51 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .message(String.format("Error firing data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         }
+    }
+
+    private void incrementFireCounter(String magazineIdentifier) throws ExecutionException, RetryException {
+        Record record = readRetryer.call(() -> {
+            final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
+            writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+            String key = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
+            return aerospikeClient.operate(writePolicy,
+                    new Key(namespace, metaSetName, key),
+                    Operation.add(new Bin(Constants.FIRE_COUNTER, 1L)),
+                    Operation.get(Constants.FIRE_COUNTER));
+        });
+
+        if (record == null) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
+                    .message(String.format("Error reading counters [magazineIdentifier = %s]", magazineIdentifier))
+                    .build();
+        }
+    }
+
+    private void decrementFireCounter(String magazineIdentifier) throws ExecutionException, RetryException {
+        Record record = readRetryer.call(() -> {
+            final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
+            writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+            String key = Joiner.on("_").join(magazineIdentifier, Constants.COUNTERS);
+            return aerospikeClient.operate(writePolicy,
+                    new Key(namespace, metaSetName, key),
+                    Operation.add(new Bin(Constants.FIRE_COUNTER, -1L)),
+                    Operation.get(Constants.FIRE_COUNTER));
+        });
+
+        if (record == null) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
+                    .message(String.format("Error reading counters [magazineIdentifier = %s]", magazineIdentifier))
+                    .build();
+        }
+    }
+
+    private Record fireData(String magazineIdentifier, Record record) throws ExecutionException, RetryException {
+        return readRetryer.call(() -> {
+            String key = Joiner.on("_").join(magazineIdentifier, record.getLong(Constants.FIRE_POINTER));
+            return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
+        });
     }
 
     private void incrementLoadCounter(String magazineIdentifier) throws ExecutionException, RetryException {
