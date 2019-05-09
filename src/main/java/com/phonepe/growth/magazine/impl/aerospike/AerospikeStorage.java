@@ -73,7 +73,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
             final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
             boolean success = loadData(key, data);
-            incrementLoadCounter(magazineIdentifier);
+            if (success) {
+                incrementLoadCounter(magazineIdentifier);
+            }
             return success;
         } catch (RetryException re) {
             throw MagazineException.builder()
@@ -96,7 +98,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
             final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
             boolean success = loadData(key, data);
-            decrementFireCounter(magazineIdentifier);
+            if (success) {
+                decrementFireCounter(magazineIdentifier);
+            }
             return success;
         } catch (RetryException re) {
             throw MagazineException.builder()
