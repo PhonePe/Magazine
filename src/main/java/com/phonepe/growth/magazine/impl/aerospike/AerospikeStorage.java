@@ -197,11 +197,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .message(String.format("Error firing data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
         } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format("Error firing data [magazineIdentifier = %s]", magazineIdentifier))
-                    .build();
+            throw MagazineException.propagate(e);
         }
     }
 
