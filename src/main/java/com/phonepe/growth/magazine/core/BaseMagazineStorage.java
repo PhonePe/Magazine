@@ -13,10 +13,12 @@ import java.util.Optional;
 public abstract class BaseMagazineStorage<T> {
     private final StorageType type;
     private final int recordTtl;
+    private final boolean deDupeEnabled;
 
-    public BaseMagazineStorage(StorageType type, int recordTtl) {
+    public BaseMagazineStorage(StorageType type, int recordTtl, boolean deDupeEnabled) {
         this.type = type;
         this.recordTtl = recordTtl;
+        this.deDupeEnabled = deDupeEnabled;
     }
 
     public abstract boolean load(String magazineIdentifier, T data);
