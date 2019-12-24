@@ -3,6 +3,10 @@ package com.phonepe.growth.magazine.impl.aerospike;
 import com.aerospike.client.*;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
+import com.aerospike.client.query.Filter;
+import com.aerospike.client.query.IndexType;
+import com.aerospike.client.query.RecordSet;
+import com.aerospike.client.query.Statement;
 import com.github.rholder.retry.*;
 import com.google.common.base.Joiner;
 import com.google.common.base.Predicates;
@@ -12,6 +16,7 @@ import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
+import com.phonepe.growth.magazine.util.LockUtils;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -39,8 +44,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             String dataSetName,
                             String metaSetName,
                             Class<T> klass,
+                            boolean enableDeDupe,
                             int recordTtl) {
-        super(StorageType.AEROSPIKE, recordTtl);
+        super(StorageType.AEROSPIKE, recordTtl, enableDeDupe);
 
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
@@ -59,24 +65,36 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
         fireRetryer = RetryerBuilder.<Record>newBuilder()
+                .retryIfExceptionOfType(AerospikeException.class)
                 .retryIfResult(Predicates.isNull())
                 .withStopStrategy(StopStrategies.neverStop())
                 .withWaitStrategy(WaitStrategies.fixedWait(Constants.DELAY_BETWEEN_RETRIES, TimeUnit.MILLISECONDS))
                 .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
         clazz = klass;
+
+        if (enableDeDupe){
+            createIndex(dataSetName, Constants.DATA);
+        }
     }
 
     @Override
     public boolean load(String magazineIdentifier, T data) {
+        boolean lockAcquired = false;
+        final String lockId = Joiner.on("_").join(magazineIdentifier, data);
         try {
-            long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
-            final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
-            boolean success = loadData(key, data);
-            if (success) {
-                incrementLoadCounter(magazineIdentifier);
+            lockAcquired = LockUtils.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
+
+            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(String.valueOf(data)))) {
+                long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
+                final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
+                boolean success = loadData(key, data);
+                if (success) {
+                    incrementLoadCounter(magazineIdentifier);
+                }
+                return success;
             }
-            return success;
+            return true;
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
@@ -89,12 +107,20 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .errorCode(ErrorCode.CONNECTION_ERROR)
                     .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
+        } finally {
+            if (lockAcquired) {
+                LockUtils.releaseLock(lockId);
+            }
         }
     }
 
     @Override
     public boolean reload(String magazineIdentifier, T data) {
+        boolean lockAcquired = false;
+        final String lockId = Joiner.on("_").join(magazineIdentifier, data);
         try {
+            lockAcquired = LockUtils.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
+
             long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
             final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
             boolean success = loadData(key, data);
@@ -114,6 +140,10 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .errorCode(ErrorCode.CONNECTION_ERROR)
                     .message(String.format("Error loading data [magazineIdentifier = %s]", magazineIdentifier))
                     .build();
+        } finally {
+            if (lockAcquired) {
+                LockUtils.releaseLock(lockId);
+            }
         }
     }
 
@@ -296,5 +326,29 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .build();
         }
         return record.getLong(Constants.LOAD_POINTER);
+    }
+
+    private boolean alreadyExists(String data) throws ExecutionException, RetryException {
+        return writeRetryer.call(() -> {
+            Statement statement = new Statement();
+            statement.setNamespace(namespace);
+            statement.setSetName(dataSetName);
+            statement.setIndexName(Constants.DATA);
+            statement.setFilter(Filter.equal(Constants.DATA, data));
+            RecordSet rs = aerospikeClient.query(null, statement);
+            return rs.next();
+        });
+    }
+
+    private void createIndex(String setName, String bin) {
+        try{
+            aerospikeClient.createIndex(null, namespace, setName, setName, bin, IndexType.STRING).waitTillComplete();
+        }
+        catch(AerospikeException e) {
+            if(e.getResultCode() == 200) {
+                return;
+            }
+            throw e;
+        }
     }
 }
