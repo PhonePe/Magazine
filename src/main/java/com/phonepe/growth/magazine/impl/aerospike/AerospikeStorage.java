@@ -44,9 +44,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             String dataSetName,
                             String metaSetName,
                             Class<T> klass,
-                            boolean deDupeEnabled,
+                            boolean enableDeDupe,
                             int recordTtl) {
-        super(StorageType.AEROSPIKE, recordTtl, deDupeEnabled);
+        super(StorageType.AEROSPIKE, recordTtl, enableDeDupe);
 
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
@@ -73,7 +73,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .build();
         clazz = klass;
 
-        if (deDupeEnabled){
+        if (enableDeDupe){
             createIndex(dataSetName, Constants.DATA);
         }
     }
@@ -85,7 +85,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             lockAcquired = LockUtils.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
 
-            if (!isDeDupeEnabled() || (isDeDupeEnabled() && !alreadyExists(String.valueOf(data)))) {
+            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(String.valueOf(data)))) {
                 long loadPointer = incrementAndGetLoadPointer(magazineIdentifier);
                 final String key = Joiner.on("_").join(magazineIdentifier, loadPointer);
                 boolean success = loadData(key, data);
