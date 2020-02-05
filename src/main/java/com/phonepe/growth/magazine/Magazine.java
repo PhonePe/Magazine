@@ -5,6 +5,7 @@ import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.Map;
 import java.util.Optional;
 
 @Data
@@ -32,7 +33,7 @@ public class Magazine<T> {
         return baseMagazineStorage.fire(magazineIdentifier);
     }
 
-    public MetaData getMetaData() {
+    public Map<String, MetaData> getMetaData() {
         return baseMagazineStorage.getMetaData(magazineIdentifier);
     }
 }

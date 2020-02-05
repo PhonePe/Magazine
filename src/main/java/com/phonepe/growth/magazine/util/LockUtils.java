@@ -8,7 +8,7 @@ import com.phonepe.growth.magazine.exception.MagazineException;
 public class LockUtils {
     private static DistributedLockManager distributedLockManager;
 
-    private LockUtils(){
+    private LockUtils() {
         throw new IllegalStateException("Instantiation of this class is not allowed.");
     }
 

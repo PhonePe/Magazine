@@ -4,12 +4,13 @@ import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
 
+import java.util.Map;
 import java.util.Optional;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
-    public HBaseStorage(int recordTtl, boolean deDupeEnabled) {
-        super(StorageType.HBASE, recordTtl, deDupeEnabled);
+    public HBaseStorage(int recordTtl, boolean deDupeEnabled, int shards) {
+        super(StorageType.HBASE, recordTtl, deDupeEnabled, shards);
     }
 
     @Override
@@ -28,7 +29,7 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public MetaData getMetaData(String keyPrefix) {
+    public Map<String, MetaData> getMetaData(String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 }

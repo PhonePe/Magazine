@@ -15,7 +15,7 @@ public class MagazineManager {
     private final String clientId;
     private final Map<String, Magazine<?>> magazineMap = new HashMap<>();
 
-    public MagazineManager(String clientId,  DistributedLockManager distributedLockManager) {
+    public MagazineManager(String clientId, DistributedLockManager distributedLockManager) {
         this.clientId = clientId;
         LockUtils.initialize(distributedLockManager);
     }
@@ -24,6 +24,7 @@ public class MagazineManager {
         magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
+    @SuppressWarnings("unchecked")
     public <T> Magazine<T> getMagazine(String magazineIdentifier, Class<T> klass) {
         try {
             return (Magazine<T>) (magazineMap.get(magazineIdentifier));
