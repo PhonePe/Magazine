@@ -312,15 +312,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     //Select any random shard from active shards to fire data
     private Integer getRandomShardForFire(String magazineIdentifier) throws InterruptedException, ExecutionException {
         List<String> activeShards = getActiveShards(magazineIdentifier);
-        if (getShards() > 1) {
-            int randomShard = random.nextInt(activeShards.size());
-            while (!activeShards.contains(Constants.SHARD_PREFIX + randomShard)) {
-                activeShards = getActiveShards(magazineIdentifier);
-                randomShard = random.nextInt(activeShards.size());
-            }
-            return randomShard;
-        }
-        return null;
+        return getShards() > 1 ? Integer.parseInt(activeShards.get(random.nextInt(activeShards.size())).split(Constants.KEY_DELIMITER)[1]) : null;
     }
 
     //Get active shards from cache and throw exception if there is nothing to fire in any shard
