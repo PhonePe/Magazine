@@ -56,14 +56,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.random = new Random();
         this.retryer = new AerospikeRetryer();
         this.clazz = klass;
-        this.activeShardCache = Caffeine.newBuilder()
-                .maximumSize(Constants.DEFAULT_MAX_ELEMENTS)
-                .refreshAfterWrite(Constants.DEFAULT_REFRESH, TimeUnit.SECONDS)
-                .buildAsync(key -> getMetaData(key).entrySet().stream()
-                        .filter(entry -> {
-                            MetaData metaData = entry.getValue();
-                            return metaData.getLoadCounter() > metaData.getFireCounter() && metaData.getLoadPointer() > metaData.getFirePointer();
-                        }).map(Map.Entry::getKey).collect(Collectors.toList()));
+        this.activeShardCache = initializeCache();
         if (enableDeDupe) {
             createIndex(dataSetName, Constants.DATA);
         }
@@ -371,6 +364,17 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             RecordSet rs = aerospikeClient.query(null, statement);
             return rs.next();
         });
+    }
+
+    private AsyncLoadingCache<String, List<String>> initializeCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(Constants.DEFAULT_MAX_ELEMENTS)
+                .refreshAfterWrite(Constants.DEFAULT_REFRESH, TimeUnit.SECONDS)
+                .buildAsync(key -> getMetaData(key).entrySet().stream()
+                        .filter(entry -> {
+                            MetaData metaData = entry.getValue();
+                            return ((metaData.getLoadCounter() > metaData.getFireCounter()) && (metaData.getLoadPointer() > metaData.getFirePointer()));
+                        }).map(Map.Entry::getKey).collect(Collectors.toList()));
     }
 
     private void createIndex(String setName, String bin) {
