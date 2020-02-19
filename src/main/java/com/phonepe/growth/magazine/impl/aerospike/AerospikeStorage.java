@@ -40,10 +40,10 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final String namespace;
     private final String dataSetName;
     private final String metaSetName;
-    private final AerospikeRetryer retryer;
+    private final AerospikeRetryerFactory retryerFactory;
     private final Class<T> clazz;
     private final Random random;
-    private final AsyncLoadingCache<String, List<String>> activeShardCache;
+    private final AsyncLoadingCache<String, List<String>> activeShardsCache;
 
     @Builder
     public AerospikeStorage(final AerospikeClient aerospikeClient, final String namespace, final String dataSetName, final String metaSetName,
@@ -54,9 +54,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.dataSetName = dataSetName;
         this.metaSetName = metaSetName;
         this.random = new Random();
-        this.retryer = new AerospikeRetryer();
+        this.retryerFactory = new AerospikeRetryerFactory();
         this.clazz = klass;
-        this.activeShardCache = initializeCache();
+        this.activeShardsCache = initializeCache();
         if (enableDeDupe) {
             createIndex(dataSetName, Constants.DATA);
         }
@@ -146,23 +146,24 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     @Override
     public Map<String, MetaData> getMetaData(final String magazineIdentifier) {
         try {
-            final Record[] counterRecords = (Record[]) retryer.getRetryer().call(() -> {
+            final Record[] counterRecords = (Record[]) retryerFactory.getRetryer().call(() -> {
                 Key[] keys = createMetaKeys(magazineIdentifier, Constants.COUNTERS);
                 return aerospikeClient.get(aerospikeClient.getBatchPolicyDefault(), keys);
             });
 
-            final Record[] pointerRecords = (Record[]) retryer.getRetryer().call(() -> {
+            final Record[] pointerRecords = (Record[]) retryerFactory.getRetryer().call(() -> {
                 Key[] keys = createMetaKeys(magazineIdentifier, Constants.POINTERS);
                 return aerospikeClient.get(aerospikeClient.getBatchPolicyDefault(), keys);
             });
 
             return IntStream.range(0, getShards()).boxed()
-                    .collect(Collectors.toMap(i -> Constants.SHARD_PREFIX + i, i -> MetaData.builder()
-                            .fireCounter(counterRecords[i] != null ? counterRecords[i].getLong(Constants.FIRE_COUNTER) : 0L)
-                            .loadCounter(counterRecords[i] != null ? counterRecords[i].getLong(Constants.LOAD_COUNTER) : 0L)
-                            .firePointer(pointerRecords[i] != null ? pointerRecords[i].getLong(Constants.FIRE_POINTER) : 0L)
-                            .loadPointer(pointerRecords[i] != null ? pointerRecords[i].getLong(Constants.LOAD_POINTER) : 0L)
-                            .build()));
+                    .collect(Collectors.toMap(i -> String.join(Constants.KEY_DELIMITER, Constants.SHARD_PREFIX, String.valueOf(i)),
+                            i -> MetaData.builder()
+                                    .fireCounter(counterRecords[i] != null ? counterRecords[i].getLong(Constants.FIRE_COUNTER) : 0L)
+                                    .loadCounter(counterRecords[i] != null ? counterRecords[i].getLong(Constants.LOAD_COUNTER) : 0L)
+                                    .firePointer(pointerRecords[i] != null ? pointerRecords[i].getLong(Constants.FIRE_POINTER) : 0L)
+                                    .loadPointer(pointerRecords[i] != null ? pointerRecords[i].getLong(Constants.LOAD_POINTER) : 0L)
+                                    .build()));
         } catch (RetryException re) {
             throw MagazineException.builder()
                     .cause(re)
@@ -179,7 +180,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private boolean loadData(final String key, final T data) throws ExecutionException, RetryException {
-        return (Boolean) retryer.getRetryer().call(() -> {
+        return (Boolean) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
             writePolicy.expiration = getRecordTtl();
@@ -194,10 +195,10 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     //Retry until the record is non null or there is nothing to fire
     private Record fireWithRetry(final String magazineIdentifier) {
         try {
-            return (Record) retryer.getFireRetryer().call(() -> {
+            return (Record) retryerFactory.getFireRetryer().call(() -> {
                 final Integer selectedShard = getRandomShardForFire(magazineIdentifier);
 
-                final Record pointerRecord = (Record) retryer.getRetryer().call(() -> {
+                final Record pointerRecord = (Record) retryerFactory.getRetryer().call(() -> {
                     final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
                     return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, metaSetName, key));
                 });
@@ -224,14 +225,14 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private Record fireData(final String magazineIdentifier, final Integer shard, final Record record) throws ExecutionException, RetryException {
-        return (Record) retryer.getRetryer().call(() -> {
+        return (Record) retryerFactory.getRetryer().call(() -> {
             final String key = createKey(magazineIdentifier, shard, String.valueOf(record.getLong(Constants.FIRE_POINTER)));
             return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(), new Key(namespace, dataSetName, key));
         });
     }
 
     private long incrementAndGetLoadPointer(final String magazineIdentifier, final Integer selectedShard) throws ExecutionException, RetryException {
-        final Record record = (Record) retryer.getRetryer().call(() -> {
+        final Record record = (Record) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
             final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
@@ -251,7 +252,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private Record incrementAndGetFirePointer(final String magazineIdentifier, final Integer selectedShard) throws ExecutionException, RetryException {
-        return (Record) retryer.getRetryer().call(() -> {
+        return (Record) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
 
@@ -264,7 +265,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private void incrementLoadCounter(final String magazineIdentifier, final Integer selectedShard) throws ExecutionException, RetryException {
-        final Record record = (Record) retryer.getRetryer().call(() -> {
+        final Record record = (Record) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
             final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
@@ -283,7 +284,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private void incrementFireCounter(final String magazineIdentifier, final Integer shard) throws ExecutionException, RetryException {
-        final Record record = (Record) retryer.getRetryer().call(() -> {
+        final Record record = (Record) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
             final String key = createKey(magazineIdentifier, shard, Constants.COUNTERS);
@@ -302,7 +303,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private void decrementFireCounter(final String magazineIdentifier, final Integer selectedShard) throws ExecutionException, RetryException {
-        final Record record = (Record) retryer.getRetryer().call(() -> {
+        final Record record = (Record) retryerFactory.getRetryer().call(() -> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
             final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
@@ -328,7 +329,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     //Get active shards from cache and throw exception if there is nothing to fire in any shard
     private List<String> getActiveShards(final String magazineIdentifier) throws InterruptedException, ExecutionException {
-        final List<String> activeShards = activeShardCache.get(magazineIdentifier).get();
+        final List<String> activeShards = activeShardsCache.get(magazineIdentifier).get();
         if (activeShards.isEmpty()) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.NOTHING_TO_FIRE)
@@ -340,13 +341,14 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     //Key contains shard number if shard is non null
     private String createKey(final String magazineIdentifier, final Integer shard, final String suffix) {
-        return shard != null ? String.join(Constants.KEY_DELIMITER, magazineIdentifier, String.valueOf(shard), suffix) : String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix);
+        return shard != null ? String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARD_PREFIX, String.valueOf(shard), suffix)
+                : String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix);
     }
 
     //Generate keys for batch read in case of sharded magazine
     private Key[] createMetaKeys(final String magazineIdentifier, final String suffix) {
         return getShards() > 1 ? IntStream.range(0, getShards()).boxed()
-                .map(shard -> new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, String.valueOf(shard), suffix)))
+                .map(shard -> new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARD_PREFIX, String.valueOf(shard), suffix)))
                 .toArray(Key[]::new)
                 : new Key[]{new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix))};
     }
@@ -358,7 +360,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     //return false if data already exists in the magazine
     private boolean alreadyExists(final String data) throws ExecutionException, RetryException {
-        return (Boolean) retryer.getRetryer().call(() -> {
+        return (Boolean) retryerFactory.getRetryer().call(() -> {
             final Statement statement = new Statement();
             statement.setNamespace(namespace);
             statement.setSetName(dataSetName);

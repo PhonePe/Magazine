@@ -16,7 +16,7 @@ public class Constants {
     public static final String FIRE_COUNTER = "FIRE_COUNTER";
     public static final String LOAD_POINTER = "LOAD_POINTER";
     public static final String FIRE_POINTER = "FIRE_POINTER";
-    public static final String SHARD_PREFIX = "SHARD_";
+    public static final String SHARD_PREFIX = "SHARD";
 
     public static final int DEFAULT_REFRESH = 5;
     public static final int DEFAULT_MAX_ELEMENTS = 1024;

@@ -10,11 +10,11 @@ import lombok.Getter;
 import java.util.concurrent.TimeUnit;
 
 @Getter
-public class AerospikeRetryer<T> {
+public class AerospikeRetryerFactory<T> {
     private final Retryer<T> retryer;
     private final Retryer<Record> fireRetryer;
 
-    public AerospikeRetryer() {
+    public AerospikeRetryerFactory() {
         retryer = RetryerBuilder.<T>newBuilder()
                 .retryIfExceptionOfType(AerospikeException.class)
                 .withStopStrategy(StopStrategies.stopAfterAttempt(Constants.MAX_RETRIES))
