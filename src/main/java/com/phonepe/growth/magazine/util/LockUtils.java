@@ -12,11 +12,11 @@ public class LockUtils {
         throw new IllegalStateException("Instantiation of this class is not allowed.");
     }
 
-    public static void initialize(DistributedLockManager dlm) {
+    public static void initialize(final DistributedLockManager dlm) {
         distributedLockManager = dlm;
     }
 
-    public static boolean acquireLock(String lockId) {
+    public static boolean acquireLock(final String lockId) {
         boolean result;
         try {
             result = distributedLockManager.acquireLock(lockId);
@@ -34,7 +34,7 @@ public class LockUtils {
         return result;
     }
 
-    public static boolean releaseLock(String lockId) {
+    public static boolean releaseLock(final String lockId) {
         return distributedLockManager.releaseLock(lockId);
     }
 }

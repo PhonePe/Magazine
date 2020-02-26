@@ -15,17 +15,17 @@ public class MagazineManager {
     private final String clientId;
     private final Map<String, Magazine<?>> magazineMap = new HashMap<>();
 
-    public MagazineManager(String clientId, DistributedLockManager distributedLockManager) {
+    public MagazineManager(final String clientId, final DistributedLockManager distributedLockManager) {
         this.clientId = clientId;
         LockUtils.initialize(distributedLockManager);
     }
 
-    public void refresh(List<Magazine<?>> magazines) {
+    public void refresh(final List<Magazine<?>> magazines) {
         magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
     @SuppressWarnings("unchecked")
-    public <T> Magazine<T> getMagazine(String magazineIdentifier, Class<T> klass) {
+    public <T> Magazine<T> getMagazine(final String magazineIdentifier, final Class<T> klass) {
         try {
             return (Magazine<T>) (magazineMap.get(magazineIdentifier));
         } catch (ClassCastException e) {

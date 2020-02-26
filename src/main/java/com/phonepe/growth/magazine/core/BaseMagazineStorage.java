@@ -18,18 +18,18 @@ public abstract class BaseMagazineStorage<T> {
     private final boolean enableDeDupe;
     private final int shards;
 
-    public BaseMagazineStorage(StorageType type, int recordTtl, boolean enableDeDupe, int shards) {
+    public BaseMagazineStorage(final StorageType type, final int recordTtl, final boolean enableDeDupe, final int shards) {
         this.type = type;
         this.recordTtl = recordTtl;
         this.enableDeDupe = enableDeDupe;
         this.shards = shards < 1 ? Constants.MIN_SHARDS : shards;
     }
 
-    public abstract boolean load(String magazineIdentifier, T data);
+    public abstract boolean load(final String magazineIdentifier, final T data);
 
-    public abstract boolean reload(String magazineIdentifier, T data);
+    public abstract boolean reload(final String magazineIdentifier, final T data);
 
-    public abstract Optional<T> fire(String magazineIdentifier);
+    public abstract Optional<T> fire(final String magazineIdentifier);
 
-    public abstract Map<String, MetaData> getMetaData(String magazineIdentifier);
+    public abstract Map<String, MetaData> getMetaData(final String magazineIdentifier);
 }

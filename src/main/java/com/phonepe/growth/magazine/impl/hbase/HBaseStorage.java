@@ -9,27 +9,27 @@ import java.util.Optional;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
-    public HBaseStorage(int recordTtl, boolean deDupeEnabled, int shards) {
+    public HBaseStorage(final int recordTtl, final boolean deDupeEnabled, final int shards) {
         super(StorageType.HBASE, recordTtl, deDupeEnabled, shards);
     }
 
     @Override
-    public boolean load(String keyPrefix, T data) {
+    public boolean load(final String keyPrefix, final T data) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public boolean reload(String keyPrefix, T data) {
+    public boolean reload(final String keyPrefix, final T data) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Optional<T> fire(String keyPrefix) {
+    public Optional<T> fire(final String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Map<String, MetaData> getMetaData(String keyPrefix) {
+    public Map<String, MetaData> getMetaData(final String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 }
