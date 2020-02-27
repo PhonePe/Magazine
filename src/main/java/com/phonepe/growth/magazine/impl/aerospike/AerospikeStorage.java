@@ -10,6 +10,11 @@ import com.aerospike.client.query.Statement;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.rholder.retry.RetryException;
+import com.phonepe.growth.dlm.DistributedLockManager;
+import com.phonepe.growth.dlm.core.LockMode;
+import com.phonepe.growth.dlm.impl.aerospike.AerospikeLock;
+import com.phonepe.growth.dlm.impl.aerospike.AerospikeStore;
+import com.phonepe.growth.magazine.commands.LockCommands;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
@@ -17,7 +22,6 @@ import com.phonepe.growth.magazine.core.StorageType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.util.ErrorMessages;
-import com.phonepe.growth.magazine.util.LockUtils;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -44,6 +48,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final Class<T> clazz;
     private final Random random;
     private final AsyncLoadingCache<String, List<String>> activeShardsCache;
+    private final LockCommands lockCommands;
 
     @Builder
     public AerospikeStorage(final AerospikeClient aerospikeClient, final String namespace, final String dataSetName, final String metaSetName,
@@ -57,6 +62,14 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.retryerFactory = new AerospikeRetryerFactory();
         this.clazz = klass;
         this.activeShardsCache = initializeCache();
+        this.lockCommands = new LockCommands(new DistributedLockManager(Constants.DLM_CLIENT_ID, AerospikeLock.builder()
+                .mode(LockMode.EXCLUSIVE)
+                .store(AerospikeStore.builder()
+                        .aerospikeClient(aerospikeClient)
+                        .namespace(namespace)
+                        .setname(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME)
+                        .build())
+                .build()));
         if (enableDeDupe) {
             createIndex(dataSetName, Constants.DATA);
         }
@@ -69,7 +82,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             //Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockAcquired = LockUtils.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
+                lockAcquired = lockCommands.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
             }
             if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(String.valueOf(data)))) {
                 final Integer selectedShard = selectShard();
@@ -96,7 +109,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .build();
         } finally {
             if (lockAcquired) {
-                LockUtils.releaseLock(lockId);
+                lockCommands.releaseLock(lockId);
             }
         }
     }
@@ -108,7 +121,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             //Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockAcquired = LockUtils.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
+                lockAcquired = lockCommands.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
             }
 
             final Integer selectedShard = selectShard();
@@ -133,7 +146,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .build();
         } finally {
             if (lockAcquired) {
-                LockUtils.releaseLock(lockId);
+                lockCommands.releaseLock(lockId);
             }
         }
     }

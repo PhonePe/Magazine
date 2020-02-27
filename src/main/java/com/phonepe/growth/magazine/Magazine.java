@@ -33,12 +33,29 @@ public class Magazine<T> {
         validateStorage(baseMagazineStorage);
     }
 
+    public boolean load(final T data) {
+        return baseMagazineStorage.load(magazineIdentifier, data);
+    }
+
+    public boolean reload(final T data) {
+        return baseMagazineStorage.reload(magazineIdentifier, data);
+    }
+
+    public Optional<T> fire() {
+        return baseMagazineStorage.fire(magazineIdentifier);
+    }
+
+    public Map<String, MetaData> getMetaData() {
+        return baseMagazineStorage.getMetaData(magazineIdentifier);
+    }
+
     @SuppressWarnings("unchecked")
     private void validateStorage(final BaseMagazineStorage<T> baseMagazineStorage) throws Exception {
         baseMagazineStorage.getType().accept(new StorageTypeVisitor<Boolean>() {
             @Override
             public Boolean visitAerospike() throws ExecutionException, RetryException {
                 final AerospikeStorage storage = (AerospikeStorage) baseMagazineStorage;
+
                 final Record record = (Record) storage.getRetryerFactory().getRetryer().call(() ->
                         storage.getAerospikeClient().get(storage.getAerospikeClient().getReadPolicyDefault(),
                                 new Key(storage.getNamespace(), storage.getMetaSetName(),
@@ -71,21 +88,5 @@ public class Magazine<T> {
                 throw new UnsupportedOperationException();
             }
         });
-    }
-
-    public boolean load(final T data) {
-        return baseMagazineStorage.load(magazineIdentifier, data);
-    }
-
-    public boolean reload(final T data) {
-        return baseMagazineStorage.reload(magazineIdentifier, data);
-    }
-
-    public Optional<T> fire() {
-        return baseMagazineStorage.fire(magazineIdentifier);
-    }
-
-    public Map<String, MetaData> getMetaData() {
-        return baseMagazineStorage.getMetaData(magazineIdentifier);
     }
 }
