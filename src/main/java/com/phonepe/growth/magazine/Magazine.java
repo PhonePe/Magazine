@@ -3,6 +3,7 @@ package com.phonepe.growth.magazine;
 import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
+import com.aerospike.client.policy.WritePolicy;
 import com.github.rholder.retry.RetryException;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MetaData;
@@ -43,9 +44,10 @@ public class Magazine<T> {
                                 new Key(storage.getNamespace(), storage.getMetaSetName(),
                                         String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.IS_SHARDED))));
                 if (record == null) {
+                    final WritePolicy writePolicy = storage.getAerospikeClient().getWritePolicyDefault();
+                    writePolicy.expiration = Constants.IS_SHARDED_DEFAULT_TTL;
                     storage.getRetryerFactory().getRetryer().call(() -> {
-                        storage.getAerospikeClient().put(storage.getAerospikeClient().getWritePolicyDefault(),
-                                new Key(storage.getNamespace(), storage.getMetaSetName(),
+                        storage.getAerospikeClient().put(writePolicy, new Key(storage.getNamespace(), storage.getMetaSetName(),
                                         String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.IS_SHARDED)),
                                 new Bin(Constants.IS_SHARDED, storage.getShards() > 1));
                         return null;

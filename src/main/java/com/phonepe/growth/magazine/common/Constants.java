@@ -18,6 +18,7 @@ public class Constants {
     public static final int MAX_RETRIES = 5;
     public static final long DELAY_BETWEEN_RETRIES = 10; //in milliseconds
     public static final int MIN_SHARDS = 1;
+    public static final int IS_SHARDED_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
     private Constants() {
         throw new IllegalStateException("Instantiation of this class is not allowed.");
     }
