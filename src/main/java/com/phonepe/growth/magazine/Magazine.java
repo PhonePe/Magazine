@@ -58,25 +58,35 @@ public class Magazine<T> {
 
                 final Record record = (Record) storage.getRetryerFactory().getRetryer().call(() ->
                         storage.getAerospikeClient().get(storage.getAerospikeClient().getReadPolicyDefault(),
-                                new Key(storage.getNamespace(), storage.getMetaSetName(),
-                                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.IS_SHARDED))));
+                                new Key(storage.getNamespace(),
+                                        storage.getMetaSetName(),
+                                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARDS_BIN))));
+
                 if (record == null) {
                     final WritePolicy writePolicy = storage.getAerospikeClient().getWritePolicyDefault();
-                    writePolicy.expiration = Constants.IS_SHARDED_DEFAULT_TTL;
+                    writePolicy.expiration = Constants.SHARDS_DEFAULT_TTL;
                     storage.getRetryerFactory().getRetryer().call(() -> {
-                        storage.getAerospikeClient().put(writePolicy, new Key(storage.getNamespace(), storage.getMetaSetName(),
-                                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.IS_SHARDED)),
-                                new Bin(Constants.IS_SHARDED, storage.getShards() > 1));
+                        storage.getAerospikeClient().put(writePolicy,
+                                new Key(storage.getNamespace(),
+                                        storage.getMetaSetName(),
+                                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARDS_BIN)),
+                                new Bin(Constants.SHARDS_BIN, storage.getShards()));
                         return null;
                     });
                     return true;
                 }
 
-                final boolean isSharded = record.getBoolean(Constants.IS_SHARDED);
-                if ((isSharded && storage.getShards() <= 1) || (!isSharded && storage.getShards() > 1)) {
+                final int storedShards = record.getInt(Constants.SHARDS_BIN);
+                if (storedShards > storage.getShards()) {
                     throw MagazineException.builder()
                             .errorCode(ErrorCode.INVALID_SHARDS)
-                            .message("Cannot convert unsharded to sharded magazine or vice-versa")
+                            .message("Cannot decrease shards of a magazine.")
+                            .build();
+                }
+                if (storedShards <= 1 && storage.getShards() > 1) {
+                    throw MagazineException.builder()
+                            .errorCode(ErrorCode.INVALID_SHARDS)
+                            .message("Cannot convert unsharded to sharded magazine.")
                             .build();
                 }
 

@@ -13,14 +13,14 @@ public class Constants {
     public static final String LOAD_POINTER = "LOAD_POINTER";
     public static final String FIRE_POINTER = "FIRE_POINTER";
     public static final String SHARD_PREFIX = "SHARD";
-    public static final String IS_SHARDED = "IS_SHARDED";
+    public static final String SHARDS_BIN = "SHARDS";
     public static final String MAGAZINE_DISTRIBUTED_LOCK_SET_NAME = "magazine_distributed_lock";
     public static final int DEFAULT_REFRESH = 5;
     public static final int DEFAULT_MAX_ELEMENTS = 1024;
     public static final int MAX_RETRIES = 5;
     public static final long DELAY_BETWEEN_RETRIES = 10; //in milliseconds
     public static final int MIN_SHARDS = 1;
-    public static final int IS_SHARDED_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
+    public static final int SHARDS_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
 
     private Constants() {
         throw new IllegalStateException("Instantiation of this class is not allowed.");
