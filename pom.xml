@@ -1,12 +1,16 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
-    <packaging>jar</packaging>
-    <version>1.0.7</version>
-    <name>magazine</name>
-    <url>http://maven.apache.org</url>
+    <version>1.0.8-SNAPSHOT</version>
+
+    <parent>
+        <groupId>com.phonepe</groupId>
+        <artifactId>pp-parent-pom</artifactId>
+        <version>0.28</version>
+    </parent>
 
     <properties>
         <distributed-lock-manager.version>1.1</distributed-lock-manager.version>
@@ -59,73 +63,6 @@
         </dependency>
     </dependencies>
 
-    <repositories>
-        <repository>
-            <id>phonepe-releases</id>
-            <name>releases</name>
-            <url>http://artifactory.phonepe.com/content/repositories/releases</url>
-        </repository>
-        <repository>
-            <id>phonepe-snapshots</id>
-            <name>snapshots</name>
-            <url>http://artifactory.phonepe.com/content/repositories/snapshots</url>
-        </repository>
-        <repository>
-            <id>clojars</id>
-            <name>Clojars repository</name>
-            <url>https://clojars.org/repo</url>
-        </repository>
-        <repository>
-            <id>central</id>
-            <url>https://repo1.maven.org/maven2</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-        </repository>
-    </repositories>
-
-    <distributionManagement>
-        <repository>
-            <id>phonepe-releases</id>
-            <name>releases</name>
-            <url>http://artifactory.phonepe.com/content/repositories/releases</url>
-        </repository>
-        <snapshotRepository>
-            <id>phonepe-snapshots</id>
-            <name>snapshots</name>
-            <url>http://artifactory.phonepe.com/content/repositories/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
-
-    <profiles>
-        <profile>
-            <id>lombok-needs-tools-jar</id>
-            <activation>
-                <file>
-                    <exists>${java.home}/../lib/tools.jar</exists>
-                </file>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.projectlombok</groupId>
-                        <artifactId>lombok-maven-plugin</artifactId>
-                        <version>1.16.4.1</version>
-                        <dependencies>
-                            <dependency>
-                                <groupId>sun.jdk</groupId>
-                                <artifactId>tools</artifactId>
-                                <version>1.6</version>
-                                <scope>system</scope>
-                                <systemPath>${java.home}/../lib/tools.jar</systemPath>
-                            </dependency>
-                        </dependencies>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
     <build>
         <plugins>
             <plugin>
@@ -133,10 +70,23 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
+                    <compilerArgument>-parameters</compilerArgument>
                     <source>1.8</source>
                     <target>1.8</target>
                 </configuration>
             </plugin>
+            <!--Defined here to skip sonar break plugin-->
+            <plugin>
+                <groupId>com.github.sgoertzen</groupId>
+                <artifactId>sonar-break-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>sonar-break</id>
+                        <phase/>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
 </project>
