@@ -90,6 +90,13 @@ public class MagazineTest {
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
         }
+
+        try {
+            magazineManager.getMagazine("MAGAZINE_ID2");
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.MAGAZINE_NOT_FOUND, e.getErrorCode());
+        }
     }
 
     private BaseMagazineStorage buildMagazineStorage() {
