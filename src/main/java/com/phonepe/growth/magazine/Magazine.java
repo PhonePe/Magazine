@@ -14,17 +14,17 @@ public class Magazine<T> {
     private final String magazineIdentifier;
 
     @Builder
-    public Magazine(String clientId, BaseMagazineStorage<T> baseMagazineStorage, String magazineIdentifier) {
+    public Magazine(final String clientId, final BaseMagazineStorage<T> baseMagazineStorage, final String magazineIdentifier) {
         this.clientId = clientId;
         this.baseMagazineStorage = baseMagazineStorage;
         this.magazineIdentifier = magazineIdentifier;
     }
 
-    public boolean load(T data) {
+    public boolean load(final T data) {
         return baseMagazineStorage.load(magazineIdentifier, data);
     }
 
-    public boolean reload(T data) {
+    public boolean reload(final T data) {
         return baseMagazineStorage.reload(magazineIdentifier, data);
     }
 

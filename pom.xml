@@ -13,9 +13,20 @@
     </parent>
 
     <properties>
-        <distributed-lock-manager.version>1.1</distributed-lock-manager.version>
+        <distributed-lock-manager.version>1.1.2</distributed-lock-manager.version>
         <lombok.version>1.18.10</lombok.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
+
+        <!-- Sonar-JaCoCo properties -->
+        <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
+        <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
+        <sonar.jacoco.reportPaths>${project.basedir}/../target/jacoco.exec</sonar.jacoco.reportPaths>
+        <sonar.language>java</sonar.language>
+        <sonar.exclusions>
+            **/HBase*.java,
+            **/exception/*.java
+        </sonar.exclusions>
+        <sonar.skip>false</sonar.skip>
     </properties>
 
     <dependencies>
@@ -58,7 +69,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>3.8.1</version>
+            <version>4.12</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -74,17 +85,6 @@
                     <source>1.8</source>
                     <target>1.8</target>
                 </configuration>
-            </plugin>
-            <!--Defined here to skip sonar break plugin-->
-            <plugin>
-                <groupId>com.github.sgoertzen</groupId>
-                <artifactId>sonar-break-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>sonar-break</id>
-                        <phase/>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>

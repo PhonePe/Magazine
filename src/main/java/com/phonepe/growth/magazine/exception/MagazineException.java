@@ -23,7 +23,7 @@ public class MagazineException extends RuntimeException {
     public static MagazineException propagate(final String message, final Throwable throwable) {
         if (throwable instanceof MagazineException) {
             return (MagazineException) throwable;
-        } else if (throwable.getCause() != null && throwable.getCause() instanceof MagazineException) {
+        } else if (throwable.getCause() instanceof MagazineException) {
             return (MagazineException) throwable.getCause();
         }
         return new MagazineException(ErrorCode.INTERNAL_ERROR, message, throwable);
