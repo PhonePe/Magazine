@@ -15,17 +15,17 @@ public abstract class BaseMagazineStorage<T> {
     private final int recordTtl;
     private final boolean enableDeDupe;
 
-    public BaseMagazineStorage(StorageType type, int recordTtl, boolean enableDeDupe) {
+    public BaseMagazineStorage(final StorageType type, final int recordTtl, final boolean enableDeDupe) {
         this.type = type;
         this.recordTtl = recordTtl;
         this.enableDeDupe = enableDeDupe;
     }
 
-    public abstract boolean load(String magazineIdentifier, T data);
+    public abstract boolean load(final String magazineIdentifier, final T data);
 
-    public abstract boolean reload(String magazineIdentifier, T data);
+    public abstract boolean reload(final String magazineIdentifier, final T data);
 
-    public abstract Optional<T> fire(String magazineIdentifier);
+    public abstract Optional<T> fire(final String magazineIdentifier);
 
-    public abstract MetaData getMetaData(String magazineIdentifier);
+    public abstract MetaData getMetaData(final String magazineIdentifier);
 }

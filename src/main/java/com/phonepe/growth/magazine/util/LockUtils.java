@@ -4,13 +4,12 @@ import com.phonepe.growth.dlm.DistributedLockManager;
 import com.phonepe.growth.dlm.exception.DLSException;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class LockUtils {
     private static DistributedLockManager distributedLockManager;
-
-    private LockUtils(){
-        throw new IllegalStateException("Instantiation of this class is not allowed.");
-    }
 
     public static void initialize(DistributedLockManager dlm) {
         distributedLockManager = dlm;
