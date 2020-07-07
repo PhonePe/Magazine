@@ -43,7 +43,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final String metaSetName;
     private final AerospikeRetryerFactory retryerFactory;
     private final Class<T> clazz;
-    private final Random random;
+    private final Random random = new Random();
     private final AsyncLoadingCache<String, List<String>> activeShardsCache;
     private final LockCommands lockCommands;
 
@@ -63,7 +63,6 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.namespace = namespace;
         this.dataSetName = dataSetName;
         this.metaSetName = metaSetName;
-        this.random = new Random();
         this.retryerFactory = new AerospikeRetryerFactory();
         this.activeShardsCache = initializeCache();
         this.lockCommands = new LockCommands(new DistributedLockManager(Constants.DLM_CLIENT_ID, AerospikeLock.builder()
