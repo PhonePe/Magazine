@@ -25,6 +25,7 @@ import com.phonepe.growth.magazine.util.ErrorMessages;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.lang3.ClassUtils;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -51,16 +52,17 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             final String namespace,
                             final String dataSetName,
                             final String metaSetName,
-                            final Class<T> klass,
+                            final Class<T> clazz,
                             final boolean enableDeDupe,
                             final int recordTtl,
                             final int shards) {
         super(StorageType.AEROSPIKE, recordTtl, enableDeDupe, shards);
+        validateClass(clazz, enableDeDupe);
+        this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
         this.dataSetName = dataSetName;
         this.metaSetName = metaSetName;
-        this.clazz = klass;
         this.random = new Random();
         this.retryerFactory = new AerospikeRetryerFactory();
         this.activeShardsCache = initializeCache();
@@ -79,6 +81,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Override
     public boolean load(final String magazineIdentifier, final T data) {
+        validateDataType(data);
         boolean lockAcquired = false;
         final String lockId = String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString());
         try {
@@ -86,7 +89,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             if (isEnableDeDupe()) {
                 lockAcquired = lockCommands.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
             }
-            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(String.valueOf(data)))) {
+            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(data))) {
                 final Integer selectedShard = selectShard();
                 final long loadPointer = incrementAndGetLoadPointer(magazineIdentifier, selectedShard);
                 final String key = createKey(magazineIdentifier, selectedShard, String.valueOf(loadPointer));
@@ -118,6 +121,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Override
     public boolean reload(final String magazineIdentifier, final T data) {
+        validateDataType(data);
         boolean lockAcquired = false;
         final String lockId = String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString());
         try {
@@ -339,7 +343,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     //Select any random shard from active shards to fire data
     private Integer getRandomShardForFire(final String magazineIdentifier) throws InterruptedException, ExecutionException {
         final List<String> activeShards = getActiveShards(magazineIdentifier);
-        return getShards() > 1 ? Integer.parseInt(activeShards.get(random.nextInt(activeShards.size())).split(Constants.KEY_DELIMITER)[1]) : null;
+        return getShards() > 1 ?
+                Integer.parseInt(activeShards.get(random.nextInt(activeShards.size())).split(Constants.KEY_DELIMITER)[1]) : null;
     }
 
     //Get active shards from cache and throw exception if there is nothing to fire in any shard
@@ -356,16 +361,28 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     //Key contains shard number if shard is non null
     private String createKey(final String magazineIdentifier, final Integer shard, final String suffix) {
-        return shard != null ? String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARD_PREFIX, String.valueOf(shard), suffix)
-                : String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix);
+        return shard != null ?
+                String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARD_PREFIX, String.valueOf(shard), suffix) :
+                String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix);
     }
 
     //Generate keys for batch read in case of sharded magazine
     private Key[] createMetaKeys(final String magazineIdentifier, final String suffix) {
-        return getShards() > 1 ? IntStream.range(0, getShards()).boxed()
-                .map(shard -> new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, Constants.SHARD_PREFIX, String.valueOf(shard), suffix)))
-                .toArray(Key[]::new)
-                : new Key[]{new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix))};
+        return getShards() > 1 ?
+                IntStream.range(0, getShards()).boxed()
+                        .map(shard ->
+                                new Key(namespace,
+                                        metaSetName,
+                                        String.join(Constants.KEY_DELIMITER,
+                                                magazineIdentifier,
+                                                Constants.SHARD_PREFIX,
+                                                String.valueOf(shard),
+                                                suffix)
+                                )
+                        ).toArray(Key[]::new) :
+                new Key[]{
+                        new Key(namespace, metaSetName, String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix))
+                };
     }
 
     //return null if magazine is unsharded or have 1 shard, else select any random shard
@@ -374,27 +391,47 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     //return false if data already exists in the magazine
-    private boolean alreadyExists(final String data) throws ExecutionException, RetryException {
+    private boolean alreadyExists(final T data) throws ExecutionException, RetryException {
         return (Boolean) retryerFactory.getRetryer().call(() -> {
             final Statement statement = new Statement();
             statement.setNamespace(namespace);
             statement.setSetName(dataSetName);
             statement.setIndexName(Constants.DATA);
-            statement.setFilter(Filter.equal(Constants.DATA, data));
+            setFilterForDedupe(data, statement);
             RecordSet rs = aerospikeClient.query(null, statement);
             return Objects.nonNull(rs) && rs.next();
         });
+    }
+
+    private void setFilterForDedupe(final T data, final Statement statement) {
+        if (data.getClass().isAssignableFrom(String.class)) {
+            statement.setFilter(Filter.equal(Constants.DATA, (String) data));
+        } else if (data.getClass().isAssignableFrom(Long.class)) {
+            statement.setFilter(Filter.equal(Constants.DATA, (Long) data));
+        } else if (data.getClass().isAssignableFrom(Integer.class)) {
+            statement.setFilter(Filter.equal(Constants.DATA, (Integer) data));
+        } else {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE)
+                    .message(String.format(ErrorMessages.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
+                    .build();
+        }
     }
 
     private AsyncLoadingCache<String, List<String>> initializeCache() {
         return Caffeine.newBuilder()
                 .maximumSize(Constants.DEFAULT_MAX_ELEMENTS)
                 .refreshAfterWrite(Constants.DEFAULT_REFRESH, TimeUnit.SECONDS)
-                .buildAsync(key -> getMetaData(key).entrySet().stream()
-                        .filter(entry -> {
-                            final MetaData metaData = entry.getValue();
-                            return ((metaData.getLoadCounter() > metaData.getFireCounter()) && (metaData.getLoadPointer() > metaData.getFirePointer()));
-                        }).map(Map.Entry::getKey).collect(Collectors.toList()));
+                .buildAsync(key ->
+                        getMetaData(key).entrySet().stream()
+                                .filter(entry -> {
+                                    final MetaData metaData = entry.getValue();
+                                    return ((metaData.getLoadCounter() > metaData.getFireCounter())
+                                            && (metaData.getLoadPointer() > metaData.getFirePointer()));
+                                })
+                                .map(Map.Entry::getKey)
+                                .collect(Collectors.toList())
+                );
     }
 
     private void createIndex(final String setName, final String bin) {
@@ -405,6 +442,25 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 return;
             }
             throw e;
+        }
+    }
+
+    private void validateClass(Class<T> clazz, boolean enableDeDupe) {
+        if (enableDeDupe && Constants.DEDUPABLE_CLASSES.stream()
+                .noneMatch(klass -> ClassUtils.isAssignable(clazz, klass))) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE)
+                    .message(String.format(ErrorMessages.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
+                    .build();
+        }
+    }
+
+    private void validateDataType(T data) {
+        if (!data.getClass().isAssignableFrom(clazz)) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.DATA_TYPE_MISMATCH)
+                    .message("Mismatch in data type of magazine and requested data.")
+                    .build();
         }
     }
 }

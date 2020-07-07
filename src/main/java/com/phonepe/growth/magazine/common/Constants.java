@@ -1,7 +1,10 @@
 package com.phonepe.growth.magazine.common;
 
+import com.google.common.collect.ImmutableSet;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+
+import java.util.Set;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class Constants {
@@ -29,4 +32,10 @@ public class Constants {
     public static final long DELAY_BETWEEN_RETRIES = 10; //in milliseconds
     public static final int MIN_SHARDS = 1;
     public static final int SHARDS_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
+
+    public static Set<Class<?>> DEDUPABLE_CLASSES = ImmutableSet.of(
+            String.class,
+            Long.class,
+            Integer.class
+    );
 }
