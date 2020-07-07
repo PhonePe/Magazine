@@ -7,6 +7,7 @@ import lombok.Data;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Data
 public class MagazineManager {
@@ -22,21 +23,14 @@ public class MagazineManager {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> Magazine<T> getMagazine(final String magazineIdentifier, final Class<T> klass) {
-        try {
-            return (Magazine<T>) (magazineMap.get(magazineIdentifier));
-        } catch (ClassCastException e) {
-            throw MagazineException.builder()
-                    .message(String.format("Unable to provide magazine of required storage type for %s", magazineIdentifier))
-                    .errorCode(ErrorCode.STORAGE_TYPE_MISMATCH)
-                    .cause(e)
-                    .build();
-        } catch (Exception e) {
+    public <T> Magazine<T> getMagazine(final String magazineIdentifier) {
+        Magazine<T> magazine =  (Magazine<T>) (magazineMap.get(magazineIdentifier));
+        if (Objects.isNull(magazine)) {
             throw MagazineException.builder()
                     .message(String.format("Magazine not found for identifier %s", magazineIdentifier))
                     .errorCode(ErrorCode.MAGAZINE_NOT_FOUND)
-                    .cause(e)
                     .build();
         }
+        return magazine;
     }
 }

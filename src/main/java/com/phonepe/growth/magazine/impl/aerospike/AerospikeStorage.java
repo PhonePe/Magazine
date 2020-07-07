@@ -26,10 +26,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -37,10 +34,9 @@ import java.util.stream.IntStream;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@SuppressWarnings("unchecked")
 public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
-    private final AerospikeClient aerospikeClient;
+    private final IAerospikeClient aerospikeClient;
     private final String namespace;
     private final String dataSetName;
     private final String metaSetName;
@@ -51,16 +47,22 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final LockCommands lockCommands;
 
     @Builder
-    public AerospikeStorage(final AerospikeClient aerospikeClient, final String namespace, final String dataSetName, final String metaSetName,
-                            final Class<T> klass, final boolean enableDeDupe, final int recordTtl, final int shards) {
+    public AerospikeStorage(final IAerospikeClient aerospikeClient,
+                            final String namespace,
+                            final String dataSetName,
+                            final String metaSetName,
+                            final Class<T> klass,
+                            final boolean enableDeDupe,
+                            final int recordTtl,
+                            final int shards) {
         super(StorageType.AEROSPIKE, recordTtl, enableDeDupe, shards);
         this.aerospikeClient = aerospikeClient;
         this.namespace = namespace;
         this.dataSetName = dataSetName;
         this.metaSetName = metaSetName;
+        this.clazz = klass;
         this.random = new Random();
         this.retryerFactory = new AerospikeRetryerFactory();
-        this.clazz = klass;
         this.activeShardsCache = initializeCache();
         this.lockCommands = new LockCommands(new DistributedLockManager(Constants.DLM_CLIENT_ID, AerospikeLock.builder()
                 .mode(LockMode.EXCLUSIVE)
@@ -379,8 +381,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             statement.setSetName(dataSetName);
             statement.setIndexName(Constants.DATA);
             statement.setFilter(Filter.equal(Constants.DATA, data));
-            final RecordSet rs = aerospikeClient.query(null, statement);
-            return rs.next();
+            RecordSet rs = aerospikeClient.query(null, statement);
+            return Objects.nonNull(rs) && rs.next();
         });
     }
 
