@@ -26,7 +26,8 @@ public class Magazine<T> {
     private final String magazineIdentifier;
 
     @Builder
-    public Magazine(final String clientId, final BaseMagazineStorage<T> baseMagazineStorage, final String magazineIdentifier) throws Exception {
+    public Magazine(final String clientId, final BaseMagazineStorage<T> baseMagazineStorage,
+                    final String magazineIdentifier) throws ExecutionException, RetryException {
         this.clientId = clientId;
         this.magazineIdentifier = magazineIdentifier;
         this.baseMagazineStorage = baseMagazineStorage;
