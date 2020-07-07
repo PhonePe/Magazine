@@ -11,6 +11,7 @@ import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorage;
+import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.growth.magazine.util.MockAerospikeClient;
 import org.junit.Assert;
 import org.junit.Before;
@@ -222,13 +223,14 @@ public class MagazineTest {
     private BaseMagazineStorage buildMagazineStorage(Class clazz) {
         return AerospikeStorage.<String>builder()
                 .clazz(clazz)
-                .dataSetName("DATA_SET")
-                .metaSetName("META_SET")
+                .storageConfig(AerospikeStorageConfig.builder()
+                        .dataSetName("DATA_SET")
+                        .metaSetName("META_SET")
+                        .namespace("NAMESPACE")
+                        .shards(16)
+                        .build())
                 .aerospikeClient(aerospikeClient)
-                .namespace("NAMESPACE")
-                .recordTtl(10000)
                 .enableDeDupe(true)
-                .shards(16)
                 .build();
     }
 

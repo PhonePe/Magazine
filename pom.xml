@@ -61,6 +61,11 @@
             <version>${caffeine.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>6.0.10.Final</version>
+        </dependency>
+        <dependency>
             <groupId>com.phonepe.growth</groupId>
             <artifactId>distributed-lock-manager</artifactId>
             <version>${distributed-lock-manager.version}</version>

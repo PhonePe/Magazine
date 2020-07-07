@@ -49,20 +49,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Builder
     public AerospikeStorage(final IAerospikeClient aerospikeClient,
-                            final String namespace,
-                            final String dataSetName,
-                            final String metaSetName,
-                            final Class<T> clazz,
+                            final AerospikeStorageConfig storageConfig,
                             final boolean enableDeDupe,
-                            final int recordTtl,
-                            final int shards) {
-        super(StorageType.AEROSPIKE, recordTtl, enableDeDupe, shards);
+                            final Class<T> clazz) {
+        super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), enableDeDupe, storageConfig.getShards());
         validateClass(clazz, enableDeDupe);
         this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
-        this.namespace = namespace;
-        this.dataSetName = dataSetName;
-        this.metaSetName = metaSetName;
+        this.namespace = storageConfig.getNamespace();
+        this.dataSetName = storageConfig.getDataSetName();
+        this.metaSetName = storageConfig.getMetaSetName();
         this.retryerFactory = new AerospikeRetryerFactory();
         this.activeShardsCache = initializeCache();
         this.lockCommands = new LockCommands(new DistributedLockManager(Constants.DLM_CLIENT_ID, AerospikeLock.builder()
