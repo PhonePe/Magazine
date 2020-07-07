@@ -50,7 +50,7 @@ public class Magazine<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private void validateStorage(final BaseMagazineStorage<T> baseMagazineStorage) throws Exception {
+    private void validateStorage(final BaseMagazineStorage<T> baseMagazineStorage) throws ExecutionException, RetryException {
         baseMagazineStorage.getType().accept(new StorageTypeVisitor<Boolean>() {
             @Override
             public Boolean visitAerospike() throws ExecutionException, RetryException {
