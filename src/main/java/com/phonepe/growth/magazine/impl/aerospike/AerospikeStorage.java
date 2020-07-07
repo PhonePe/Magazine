@@ -89,7 +89,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             if (isEnableDeDupe()) {
                 lockAcquired = lockCommands.acquireLock(lockId); // Exception is thrown if acquiring lock fails.
             }
-            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(data))) {
+            if (!isEnableDeDupe() || (isEnableDeDupe() && !alreadyExists(magazineIdentifier, data))) {
                 final Integer selectedShard = selectShard();
                 final long loadPointer = incrementAndGetLoadPointer(magazineIdentifier, selectedShard);
                 final String key = createKey(magazineIdentifier, selectedShard, String.valueOf(loadPointer));
@@ -203,6 +203,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
             writePolicy.expiration = getRecordTtl();
+            writePolicy.sendKey = true;
             aerospikeClient.put(writePolicy,
                     new Key(namespace, dataSetName, key),
                     new Bin(Constants.DATA, data),
@@ -391,7 +392,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     //return false if data already exists in the magazine
-    private boolean alreadyExists(final T data) throws ExecutionException, RetryException {
+    private boolean alreadyExists(final String magazineIdentifier, final T data) throws ExecutionException, RetryException {
         return (Boolean) retryerFactory.getRetryer().call(() -> {
             final Statement statement = new Statement();
             statement.setNamespace(namespace);
@@ -399,7 +400,15 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             statement.setIndexName(Constants.DATA);
             setFilterForDedupe(data, statement);
             RecordSet rs = aerospikeClient.query(null, statement);
-            return Objects.nonNull(rs) && rs.next();
+            if (Objects.nonNull(rs)) {
+                while (rs.next()) {
+                    String userKey = String.valueOf(rs.getKey().userKey.getObject());
+                    if (userKey.contains(magazineIdentifier)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         });
     }
 

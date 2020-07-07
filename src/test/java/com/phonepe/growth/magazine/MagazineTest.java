@@ -45,6 +45,11 @@ public class MagazineTest {
                         .magazineIdentifier("MAGAZINE_ID3")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(Integer.class))
+                        .build(),
+                Magazine.builder()
+                        .magazineIdentifier("MAGAZINE_ID4")
+                        .clientId("CLIENT_ID")
+                        .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build()
                 )
         );
@@ -53,6 +58,7 @@ public class MagazineTest {
     @Test
     public void stringMagazineTest() {
         Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        Magazine magazine2 = magazineManager.getMagazine("MAGAZINE_ID4");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(0, metaData.getFireCounter());
@@ -61,6 +67,9 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getLoadPointer());
 
         boolean success = magazine.load("DATA1");
+        Assert.assertTrue(success);
+
+        success = magazine2.load("DATA1");
         Assert.assertTrue(success);
 
         metaData = collectMetaData(magazine.getMetaData());
@@ -203,7 +212,7 @@ public class MagazineTest {
         }
 
         try {
-            magazineManager.getMagazine("MAGAZINE_ID4");
+            magazineManager.getMagazine("MAGAZINE1234");
             Assert.fail();
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.MAGAZINE_NOT_FOUND, e.getErrorCode());
