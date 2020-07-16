@@ -3,7 +3,7 @@
 
     <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
-    <version>1.0.8</version>
+    <version>1.0.9</version>
 
     <parent>
         <groupId>com.phonepe</groupId>
@@ -14,6 +14,7 @@
     <properties>
         <distributed-lock-manager.version>1.1.2</distributed-lock-manager.version>
         <lombok.version>1.18.10</lombok.version>
+        <caffeine.version>2.3.3</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
 
         <!-- Sonar-JaCoCo properties -->
@@ -53,6 +54,16 @@
             <groupId>com.github.rholder</groupId>
             <artifactId>guava-retrying</artifactId>
             <version>2.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>6.0.10.Final</version>
         </dependency>
         <dependency>
             <groupId>com.phonepe.growth</groupId>

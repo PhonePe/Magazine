@@ -1,9 +1,7 @@
 package com.phonepe.growth.magazine;
 
-import com.phonepe.growth.dlm.DistributedLockManager;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
-import com.phonepe.growth.magazine.util.LockUtils;
 import lombok.Data;
 
 import java.util.HashMap;
@@ -16,9 +14,8 @@ public class MagazineManager {
     private final String clientId;
     private final Map<String, Magazine<?>> magazineMap = new HashMap<>();
 
-    public MagazineManager(final String clientId, final DistributedLockManager distributedLockManager) {
+    public MagazineManager(final String clientId) {
         this.clientId = clientId;
-        LockUtils.initialize(distributedLockManager);
     }
 
     public void refresh(final List<Magazine<?>> magazines) {
