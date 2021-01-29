@@ -1,11 +1,6 @@
 package com.phonepe.growth.magazine;
 
 import com.google.common.collect.ImmutableList;
-import com.phonepe.growth.dlm.DistributedLockManager;
-import com.phonepe.growth.dlm.core.LockMode;
-import com.phonepe.growth.dlm.impl.aerospike.AerospikeLock;
-import com.phonepe.growth.dlm.impl.aerospike.AerospikeStore;
-import com.phonepe.growth.magazine.commands.LockCommands;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.exception.ErrorCode;
@@ -173,22 +168,6 @@ public class MagazineTest {
 
     @Test
     public void exceptionsTest() throws Exception {
-        try {
-            LockCommands lockCommands = new LockCommands(new DistributedLockManager("CLIENT_ID", AerospikeLock.builder()
-                    .mode(LockMode.EXCLUSIVE)
-                    .store(AerospikeStore.builder()
-                            .aerospikeClient(aerospikeClient)
-                            .namespace("NAMESPACE")
-                            .setname("distributed_lock")
-                            .build())
-                    .build()));
-
-            lockCommands.acquireLock("LOCK_ID");
-            lockCommands.acquireLock("LOCK_ID");
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
 
         try {
             Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID1");
