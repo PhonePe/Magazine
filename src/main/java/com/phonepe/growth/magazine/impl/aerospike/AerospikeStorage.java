@@ -108,28 +108,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 return success;
             }
             return true;
-        } catch (DLSException e) {
-            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(e.getErrorCode())) {
-                throw MagazineException.builder()
-                        .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
-                        .message(String.format("Error acquiring lock - %s", lock.getLockId()))
-                        .cause(e)
-                        .build();
-
-            }
-            throw MagazineException.propagate(e); // Generic exception propagation.
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
-                    .build();
+        } catch (Exception e) {
+            throw handleException(e, magazineIdentifier, lock);
         } finally {
             lockManager.release(lock);
         }
@@ -154,28 +134,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 decrementFireCounter(magazineIdentifier, selectedShard);
             }
             return success;
-        } catch (DLSException e) {
-            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(e.getErrorCode())) {
-                throw MagazineException.builder()
-                        .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
-                        .message(String.format("Error acquiring lock - %s", lock.getLockId()))
-                        .cause(e)
-                        .build();
-
-            }
-            throw MagazineException.propagate(e); // Generic exception propagation.
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
-                    .build();
+        } catch (Exception e) {
+            throw handleException(e, magazineIdentifier, lock);
         } finally {
             lockManager.release(lock);
         }
@@ -542,5 +502,31 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .message("Mismatch in data type of magazine and requested data.")
                     .build();
         }
+    }
+
+    private MagazineException handleException(Exception e, final String magazineIdentifier, final Lock lock) {
+        if (e instanceof DLSException) {
+            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(((DLSException) e).getErrorCode())) {
+                return MagazineException.builder()
+                        .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
+                        .message(String.format("Error acquiring lock - %s", lock.getLockId()))
+                        .cause(e)
+                        .build();
+
+            }
+        } else if (e instanceof RetryException) {
+            return MagazineException.builder()
+                    .cause(e)
+                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
+                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
+                    .build();
+        } else if (e instanceof ExecutionException) {
+            return MagazineException.builder()
+                    .cause(e)
+                    .errorCode(ErrorCode.CONNECTION_ERROR)
+                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
+                    .build();
+        }
+        return MagazineException.propagate(e);
     }
 }
