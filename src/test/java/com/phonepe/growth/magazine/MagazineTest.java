@@ -1,5 +1,7 @@
 package com.phonepe.growth.magazine;
 
+import com.aerospike.client.AerospikeException;
+import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
@@ -11,6 +13,7 @@ import com.phonepe.growth.magazine.util.MockAerospikeClient;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Matchers;
 import org.mockito.Mockito;
 
 import static org.mockito.Mockito.*;
@@ -202,7 +205,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void concurrentLockingExceptionTest() throws Exception {
+    public void extendedExceptionsTest() throws Exception {
         MockAerospikeClient aerospikeClientSpyed = Mockito.spy(aerospikeClient);
         doReturn(false).when(aerospikeClientSpyed)
                 .delete(any(), any());
@@ -236,6 +239,36 @@ public class MagazineTest {
             Assert.fail();
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
+        }
+
+        doThrow(AerospikeException.class).when(aerospikeClientSpyed)
+                .get(any(), Matchers.<Key[]>any());
+        try {
+            magazine.getMetaData();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.RETRIES_EXHAUSTED, e.getErrorCode());
+        }
+        try {
+            magazine.fire();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
+
+        doThrow(RuntimeException.class).when(aerospikeClientSpyed)
+                .get(any(), Matchers.<Key[]>any());
+        try {
+            magazine.getMetaData();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
+        try {
+            magazine.fire();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
         }
 
     }

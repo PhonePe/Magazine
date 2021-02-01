@@ -1,5 +1,6 @@
 package com.phonepe.growth.magazine.impl.aerospike;
 
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,7 +56,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final String metaSetName;
     private final AerospikeRetryerFactory retryerFactory;
     private final Class<T> clazz;
-    private final Random random = new Random();
+    private final Random random = new SecureRandom();
     private final AsyncLoadingCache<String, List<String>> activeShardsCache;
     private final DistributedLockManager lockManager;
 
@@ -493,10 +494,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final String magazineIdentifier,
             final Lock lock) {
         if (exception instanceof DLSException) {
-            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(((DLSException) exception).getErrorCode())) {
+            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE
+                    .equals(((DLSException) exception).getErrorCode())) {
                 return MagazineException.builder()
                         .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
-                        .message(String.format("Error acquiring lock - %s", lock.getLockId()))
+                        .message(String.format("Error acquiring lock - %s", (lock != null) ? lock.getLockId() : null))
                         .cause(exception)
                         .build();
 
