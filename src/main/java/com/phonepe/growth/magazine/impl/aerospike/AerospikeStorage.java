@@ -39,7 +39,7 @@ import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
-import com.phonepe.growth.magazine.util.ErrorMessages;
+import com.phonepe.growth.magazine.util.ErrorMessage;
 
 import lombok.Builder;
 import lombok.Data;
@@ -109,7 +109,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             }
             return true;
         } catch (Exception e) {
-            throw handleException(e, magazineIdentifier, lock);
+            throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
             lockManager.release(lock);
         }
@@ -135,7 +135,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             }
             return success;
         } catch (Exception e) {
-            throw handleException(e, magazineIdentifier, lock);
+            throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
             lockManager.release(lock);
         }
@@ -179,18 +179,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                             ? pointerRecords[i].getLong(Constants.LOAD_POINTER)
                                             : 0L)
                                     .build()));
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format(ErrorMessages.ERROR_GETTING_META_DATA, magazineIdentifier))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.builder()
-                    .cause(e)
-                    .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format(ErrorMessages.ERROR_GETTING_META_DATA, magazineIdentifier))
-                    .build();
+        } catch (Exception e) {
+            throw handleException(e, ErrorMessage.ERROR_GETTING_META_DATA, magazineIdentifier, null);
         }
     }
 
@@ -233,14 +223,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                         }
                         return firedData;
                     });
-        } catch (RetryException re) {
-            throw MagazineException.builder()
-                    .cause(re)
-                    .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format(ErrorMessages.ERROR_FIRING_DATA, magazineIdentifier))
-                    .build();
-        } catch (ExecutionException e) {
-            throw MagazineException.propagate(e);
+        } catch (Exception e) {
+            throw handleException(e, ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier, null);
         }
     }
 
@@ -274,7 +258,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format(ErrorMessages.ERROR_READING_POINTERS, magazineIdentifier))
+                    .message(String.format(ErrorMessage.ERROR_READING_POINTERS, magazineIdentifier))
                     .build();
         }
         return record.getLong(Constants.LOAD_POINTER);
@@ -313,7 +297,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format(ErrorMessages.ERROR_READING_COUNTERS, magazineIdentifier))
+                    .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
                     .build();
         }
     }
@@ -334,7 +318,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format(ErrorMessages.ERROR_READING_COUNTERS, magazineIdentifier))
+                    .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
                     .build();
         }
     }
@@ -356,7 +340,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (record == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
-                    .message(String.format(ErrorMessages.ERROR_READING_COUNTERS, magazineIdentifier))
+                    .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
                     .build();
         }
     }
@@ -378,7 +362,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         if (activeShards.isEmpty()) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.NOTHING_TO_FIRE)
-                    .message(String.format(ErrorMessages.NO_DATA_TO_FIRE, magazineIdentifier))
+                    .message(String.format(ErrorMessage.NO_DATA_TO_FIRE, magazineIdentifier))
                     .build();
         }
         return activeShards;
@@ -452,7 +436,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } else {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE)
-                    .message(String.format(ErrorMessages.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
+                    .message(String.format(ErrorMessage.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
                     .build();
         }
     }
@@ -489,7 +473,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .noneMatch(klass -> ClassUtils.isAssignable(clazz, klass))) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE)
-                    .message(String.format(ErrorMessages.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
+                    .message(String.format(ErrorMessage.CLASS_NOT_SUPPORTED_FOR_DEDUPE, clazz))
                     .build();
         }
     }
@@ -504,29 +488,32 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
     }
 
-    private MagazineException handleException(Exception e, final String magazineIdentifier, final Lock lock) {
-        if (e instanceof DLSException) {
-            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(((DLSException) e).getErrorCode())) {
+    private MagazineException handleException(final Exception exception,
+            final String errorMessage,
+            final String magazineIdentifier,
+            final Lock lock) {
+        if (exception instanceof DLSException) {
+            if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE.equals(((DLSException) exception).getErrorCode())) {
                 return MagazineException.builder()
                         .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
                         .message(String.format("Error acquiring lock - %s", lock.getLockId()))
-                        .cause(e)
+                        .cause(exception)
                         .build();
 
             }
-        } else if (e instanceof RetryException) {
+        } else if (exception instanceof RetryException) {
             return MagazineException.builder()
-                    .cause(e)
+                    .cause(exception)
                     .errorCode(ErrorCode.RETRIES_EXHAUSTED)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
+                    .message(String.format(errorMessage, magazineIdentifier))
                     .build();
-        } else if (e instanceof ExecutionException) {
+        } else if (exception instanceof ExecutionException) {
             return MagazineException.builder()
-                    .cause(e)
+                    .cause(exception)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format(ErrorMessages.ERROR_LOADING_DATA, magazineIdentifier))
+                    .message(String.format(ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier))
                     .build();
         }
-        return MagazineException.propagate(e);
+        return MagazineException.propagate(exception);
     }
 }
