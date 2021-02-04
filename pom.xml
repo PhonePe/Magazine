@@ -12,7 +12,7 @@
     </parent>
 
     <properties>
-        <distributed-lock-manager.version>1.1.2</distributed-lock-manager.version>
+        <distributed-lock-manager.version>1.2.0</distributed-lock-manager.version>
         <lombok.version>1.18.10</lombok.version>
         <caffeine.version>2.3.3</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
@@ -81,6 +81,11 @@
             <artifactId>junit</artifactId>
             <version>4.12</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-all</artifactId>
+            <version>1.10.19</version>
         </dependency>
     </dependencies>
 
