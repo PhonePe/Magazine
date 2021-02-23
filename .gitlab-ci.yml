@@ -45,6 +45,8 @@ deploy_snapshot:
   stage: deploy
   <<: *default
   <<: *default_tag
+  only:
+    - web
   when: manual
   script:
     - mvn deploy -DskipTests=true -Pdocker -Dmaven.install.skip=true
@@ -59,7 +61,7 @@ release:
     - git pull origin master
     - git checkout develop
     - git pull origin develop
-    - mvn -U -Pdocker jgitflow:release-start jgitflow:release-finish -DallowSnapshots=true
+    - mvn -U -Pdocker jgitflow:release-start jgitflow:release-finish
     - git push --all
     - git push --tags origin
   when: manual
