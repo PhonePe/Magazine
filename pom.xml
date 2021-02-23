@@ -3,16 +3,16 @@
 
     <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
-    <version>1.0.9</version>
+    <version>1.0.10</version>
 
     <parent>
         <groupId>com.phonepe</groupId>
         <artifactId>pp-parent-pom</artifactId>
-        <version>0.28</version>
+        <version>0.36</version>
     </parent>
 
     <properties>
-        <distributed-lock-manager.version>1.1.2</distributed-lock-manager.version>
+        <distributed-lock-manager.version>1.2.0</distributed-lock-manager.version>
         <lombok.version>1.18.10</lombok.version>
         <caffeine.version>2.3.3</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
@@ -27,9 +27,15 @@
             **/exception/*.java
         </sonar.exclusions>
         <sonar.skip>false</sonar.skip>
+        <sonar.break.version>1.2.6.2</sonar.break.version>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.github.sgoertzen</groupId>
+            <artifactId>sonar-break-maven-plugin</artifactId>
+            <version>${sonar.break.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -81,6 +87,11 @@
             <artifactId>junit</artifactId>
             <version>4.12</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-all</artifactId>
+            <version>1.10.19</version>
         </dependency>
     </dependencies>
 

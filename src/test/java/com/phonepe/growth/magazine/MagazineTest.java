@@ -1,11 +1,8 @@
 package com.phonepe.growth.magazine;
 
+import com.aerospike.client.AerospikeException;
+import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
-import com.phonepe.growth.dlm.DistributedLockManager;
-import com.phonepe.growth.dlm.core.LockMode;
-import com.phonepe.growth.dlm.impl.aerospike.AerospikeLock;
-import com.phonepe.growth.dlm.impl.aerospike.AerospikeStore;
-import com.phonepe.growth.magazine.commands.LockCommands;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.exception.ErrorCode;
@@ -16,6 +13,10 @@ import com.phonepe.growth.magazine.util.MockAerospikeClient;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Matchers;
+import org.mockito.Mockito;
+
+import static org.mockito.Mockito.*;
 
 import java.util.Map;
 import java.util.Optional;
@@ -31,12 +32,11 @@ public class MagazineTest {
     @Before
     public void setup() throws Exception {
         magazineManager = new MagazineManager("CLIENT_ID");
-        magazineManager.refresh(ImmutableList.of(
-                Magazine.builder()
-                        .magazineIdentifier("MAGAZINE_ID1")
-                        .clientId("CLIENT_ID")
-                        .baseMagazineStorage(buildMagazineStorage(String.class))
-                        .build(),
+        magazineManager.refresh(ImmutableList.of(Magazine.builder()
+                .magazineIdentifier("MAGAZINE_ID1")
+                .clientId("CLIENT_ID")
+                .baseMagazineStorage(buildMagazineStorage(String.class))
+                .build(),
                 Magazine.builder()
                         .magazineIdentifier("MAGAZINE_ID2")
                         .clientId("CLIENT_ID")
@@ -51,9 +51,7 @@ public class MagazineTest {
                         .magazineIdentifier("MAGAZINE_ID4")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
-                        .build()
-                )
-        );
+                        .build()));
     }
 
     @Test
@@ -118,7 +116,9 @@ public class MagazineTest {
 
         Optional<Long> data = magazine.fire();
         Assert.assertTrue(data.isPresent());
-        Assert.assertEquals(12L, data.get().longValue());
+        Assert.assertEquals(12L,
+                data.get()
+                        .longValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -155,7 +155,9 @@ public class MagazineTest {
 
         Optional<Integer> data = magazine.fire();
         Assert.assertTrue(data.isPresent());
-        Assert.assertEquals(12, data.get().intValue());
+        Assert.assertEquals(12,
+                data.get()
+                        .intValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -173,22 +175,6 @@ public class MagazineTest {
 
     @Test
     public void exceptionsTest() throws Exception {
-        try {
-            LockCommands lockCommands = new LockCommands(new DistributedLockManager("CLIENT_ID", AerospikeLock.builder()
-                    .mode(LockMode.EXCLUSIVE)
-                    .store(AerospikeStore.builder()
-                            .aerospikeClient(aerospikeClient)
-                            .namespace("NAMESPACE")
-                            .setname("distributed_lock")
-                            .build())
-                    .build()));
-
-            lockCommands.acquireLock("LOCK_ID");
-            lockCommands.acquireLock("LOCK_ID");
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
 
         try {
             Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID1");
@@ -200,13 +186,11 @@ public class MagazineTest {
 
         try {
             MagazineManager newMagazineManager = new MagazineManager("CLIENT_ID2");
-            newMagazineManager.refresh(ImmutableList.of(
-                    Magazine.builder()
-                            .magazineIdentifier("MAGAZINE_ID1")
-                            .clientId("CLIENT_ID")
-                            .baseMagazineStorage(buildMagazineStorage(Map.class))
-                            .build())
-            );
+            newMagazineManager.refresh(ImmutableList.of(Magazine.builder()
+                    .magazineIdentifier("MAGAZINE_ID1")
+                    .clientId("CLIENT_ID")
+                    .baseMagazineStorage(buildMagazineStorage(Map.class))
+                    .build()));
             Assert.fail();
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE, e.getErrorCode());
@@ -218,6 +202,75 @@ public class MagazineTest {
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.MAGAZINE_NOT_FOUND, e.getErrorCode());
         }
+    }
+
+    @Test
+    public void extendedExceptionsTest() throws Exception {
+        MockAerospikeClient aerospikeClientSpyed = Mockito.spy(aerospikeClient);
+        doReturn(false).when(aerospikeClientSpyed)
+                .delete(any(), any());
+
+        final Magazine<Long> magazine = Magazine.<Long>builder()
+                .magazineIdentifier("MAGAZINE_ID")
+                .clientId("CLIENT_ID")
+                .baseMagazineStorage(AerospikeStorage.<Long>builder()
+                        .clazz(Long.class)
+                        .storageConfig(AerospikeStorageConfig.builder()
+                                .dataSetName("DATA_SET")
+                                .metaSetName("META_SET")
+                                .namespace("NAMESPACE")
+                                .shards(16)
+                                .build())
+                        .aerospikeClient(aerospikeClientSpyed)
+                        .enableDeDupe(true)
+                        .build())
+                .build();
+        try {
+            magazine.load(1L);
+            magazine.load(1L);
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
+        }
+
+        try {
+            magazine.load(2L);
+            magazine.reload(1L);
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
+        }
+
+        doThrow(AerospikeException.class).when(aerospikeClientSpyed)
+                .get(any(), Matchers.<Key[]>any());
+        try {
+            magazine.getMetaData();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.RETRIES_EXHAUSTED, e.getErrorCode());
+        }
+        try {
+            magazine.fire();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
+
+        doThrow(RuntimeException.class).when(aerospikeClientSpyed)
+                .get(any(), Matchers.<Key[]>any());
+        try {
+            magazine.getMetaData();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
+        try {
+            magazine.fire();
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
+
     }
 
     private BaseMagazineStorage buildMagazineStorage(Class clazz) {
@@ -236,10 +289,22 @@ public class MagazineTest {
 
     public MetaData collectMetaData(Map<String, MetaData> metaDataMap) {
         return MetaData.builder()
-                .loadPointer(metaDataMap.values().stream().mapToLong(MetaData::getLoadPointer).sum())
-                .loadCounter(metaDataMap.values().stream().mapToLong(MetaData::getLoadCounter).sum())
-                .firePointer(metaDataMap.values().stream().mapToLong(MetaData::getFirePointer).sum())
-                .fireCounter(metaDataMap.values().stream().mapToLong(MetaData::getFireCounter).sum())
+                .loadPointer(metaDataMap.values()
+                        .stream()
+                        .mapToLong(MetaData::getLoadPointer)
+                        .sum())
+                .loadCounter(metaDataMap.values()
+                        .stream()
+                        .mapToLong(MetaData::getLoadCounter)
+                        .sum())
+                .firePointer(metaDataMap.values()
+                        .stream()
+                        .mapToLong(MetaData::getFirePointer)
+                        .sum())
+                .fireCounter(metaDataMap.values()
+                        .stream()
+                        .mapToLong(MetaData::getFireCounter)
+                        .sum())
                 .build();
     }
 
