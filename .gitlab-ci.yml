@@ -20,6 +20,8 @@ build_snapshot:
   stage: build
   <<: *default
   <<: *default_tag
+  when: manual
+  allow_failure: false
   script:
     - mvn clean package -U -DskipTests=true
 
@@ -34,6 +36,8 @@ deploy_snapshot:
   stage: deploy
   <<: *default_tag
   <<: *default
+  only:
+    - web
   allow_failure: false
   script:
     - mvn deploy -DskipTests=true -Denforcer.skip
