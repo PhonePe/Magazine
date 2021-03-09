@@ -1,24 +1,6 @@
 package com.phonepe.growth.magazine.impl.aerospike;
 
-import java.security.SecureRandom;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Random;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-
-import org.apache.commons.lang3.ClassUtils;
-
-import com.aerospike.client.AerospikeException;
-import com.aerospike.client.Bin;
-import com.aerospike.client.IAerospikeClient;
-import com.aerospike.client.Key;
-import com.aerospike.client.Operation;
-import com.aerospike.client.Record;
+import com.aerospike.client.*;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import com.aerospike.client.query.Filter;
@@ -41,10 +23,17 @@ import com.phonepe.growth.magazine.core.StorageType;
 import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.util.ErrorMessage;
-
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.lang3.ClassUtils;
+
+import java.security.SecureRandom;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -62,9 +51,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Builder
     public AerospikeStorage(final IAerospikeClient aerospikeClient,
-            final AerospikeStorageConfig storageConfig,
-            final boolean enableDeDupe,
-            final Class<T> clazz) {
+                            final AerospikeStorageConfig storageConfig,
+                            final boolean enableDeDupe,
+                            final Class<T> clazz) {
         super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), enableDeDupe, storageConfig.getShards());
         validateClass(clazz, enableDeDupe);
         this.clazz = clazz;
@@ -390,9 +379,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                 String.valueOf(shard),
                                 suffix)))
                 .toArray(Key[]::new)
-                : new Key[] { new Key(namespace,
-                        metaSetName,
-                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix)) };
+                : new Key[]{new Key(namespace,
+                metaSetName,
+                String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix))};
     }
 
     // return null if magazine is unsharded or have 1 shard, else select any random
@@ -490,10 +479,12 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private MagazineException handleException(final Exception exception,
-            final String errorMessage,
-            final String magazineIdentifier,
-            final Lock lock) {
-        if (exception instanceof DLSException) {
+                                              final String errorMessage,
+                                              final String magazineIdentifier,
+                                              final Lock lock) {
+        if (exception instanceof MagazineException || exception.getCause() instanceof MagazineException) {
+            return MagazineException.propagate(exception);
+        } else if (exception instanceof DLSException) {
             if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE
                     .equals(((DLSException) exception).getErrorCode())) {
                 return MagazineException.builder()
@@ -513,7 +504,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             return MagazineException.builder()
                     .cause(exception)
                     .errorCode(ErrorCode.CONNECTION_ERROR)
-                    .message(String.format(ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier))
+                    .message(String.format(errorMessage, magazineIdentifier))
                     .build();
         }
         return MagazineException.propagate(exception);
