@@ -6,6 +6,7 @@ import com.aerospike.client.Record;
 import com.aerospike.client.policy.WritePolicy;
 import com.github.rholder.retry.RetryException;
 import com.phonepe.growth.magazine.common.Constants;
+import com.phonepe.growth.magazine.common.FiredData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageTypeVisitor;
@@ -16,7 +17,6 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 @Data
@@ -42,8 +42,12 @@ public class Magazine<T> {
         return baseMagazineStorage.reload(magazineIdentifier, data);
     }
 
-    public Optional<T> fire() {
+    public FiredData<T> fire() {
         return baseMagazineStorage.fire(magazineIdentifier);
+    }
+
+    public void delete(final FiredData<T> firedData) {
+        baseMagazineStorage.delete(firedData);
     }
 
     public Map<String, MetaData> getMetaData() {

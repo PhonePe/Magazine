@@ -1,11 +1,11 @@
 package com.phonepe.growth.magazine.impl.hbase;
 
+import com.phonepe.growth.magazine.common.FiredData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
 
 import java.util.Map;
-import java.util.Optional;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
@@ -24,12 +24,17 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public Optional<T> fire(final String keyPrefix) {
+    public FiredData<T> fire(final String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public Map<String, MetaData> getMetaData(final String keyPrefix) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void delete(FiredData<T> firedData) {
         throw new UnsupportedOperationException();
     }
 }
