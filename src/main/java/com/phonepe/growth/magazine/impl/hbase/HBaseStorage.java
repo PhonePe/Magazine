@@ -1,6 +1,6 @@
 package com.phonepe.growth.magazine.impl.hbase;
 
-import com.phonepe.growth.magazine.common.FiredData;
+import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
@@ -24,7 +24,7 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public FiredData<T> fire(final String keyPrefix) {
+    public MagazineData<T> fire(final String keyPrefix) {
         throw new UnsupportedOperationException();
     }
 
@@ -34,7 +34,7 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public void delete(FiredData<T> firedData) {
+    public void delete(MagazineData<T> magazineData) {
         throw new UnsupportedOperationException();
     }
 }

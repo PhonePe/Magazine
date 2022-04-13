@@ -3,7 +3,7 @@ package com.phonepe.growth.magazine;
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
-import com.phonepe.growth.magazine.common.FiredData;
+import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.exception.ErrorCode;
@@ -77,7 +77,7 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        FiredData<String> data = magazine.fire();
+        MagazineData<String> data = magazine.fire();
         Assert.assertEquals(1, data.getFirePointer());
         Assert.assertEquals("DATA1", data.getData());
         magazine.delete(data);
@@ -117,7 +117,7 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        FiredData<Long> data = magazine.fire();
+        MagazineData<Long> data = magazine.fire();
         Assert.assertEquals(12L, data.getData().longValue());
 
         metaData = collectMetaData(magazine.getMetaData());
@@ -153,7 +153,7 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        FiredData<Integer> data = magazine.fire();
+        MagazineData<Integer> data = magazine.fire();
         Assert.assertEquals(12, data.getData().intValue());
 
         metaData = collectMetaData(magazine.getMetaData());

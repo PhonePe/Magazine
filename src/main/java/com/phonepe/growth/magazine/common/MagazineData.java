@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Objects;
+
 /**
  * @author shantanu.tiwari
  * Created on 12/03/22
@@ -13,18 +15,15 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class FiredData<T> {
+public class MagazineData<T> {
     private T data;
     private long firePointer;
     private Integer shard;
     private String magazineIdentifier;
 
     public String createAerospikeKey() {
-        return shard != null ? String.join(Constants.KEY_DELIMITER,
-                magazineIdentifier,
-                Constants.SHARD_PREFIX,
-                String.valueOf(shard),
-                String.valueOf(firePointer))
-                : String.join(Constants.KEY_DELIMITER, magazineIdentifier, String.valueOf(firePointer));
+        return Objects.nonNull(shard)
+                ? String.format("%s_%s_%d_%d", magazineIdentifier, Constants.SHARD_PREFIX, shard, firePointer)
+                : String.format("%s_%d", magazineIdentifier, firePointer);
     }
 }

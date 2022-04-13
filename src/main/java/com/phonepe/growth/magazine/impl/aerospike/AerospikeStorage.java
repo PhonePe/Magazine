@@ -17,7 +17,7 @@ import com.phonepe.growth.dlm.lock.mode.LockMode;
 import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeLockBase;
 import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeStore;
 import com.phonepe.growth.magazine.common.Constants;
-import com.phonepe.growth.magazine.common.FiredData;
+import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
@@ -136,7 +136,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public FiredData<T> fire(final String magazineIdentifier) {
+    public MagazineData<T> fire(final String magazineIdentifier) {
         return fireWithRetry(magazineIdentifier);
     }
 
@@ -179,16 +179,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public void delete(final FiredData<T> firedData) {
+    public void delete(final MagazineData<T> magazineData) {
         try {
             retryerFactory.getRetryer().call(() -> {
                 aerospikeClient.delete(
                         aerospikeClient.getWritePolicyDefault(),
-                        new Key(namespace, dataSetName, firedData.createAerospikeKey()));
+                        new Key(namespace, dataSetName, magazineData.createAerospikeKey()));
                 return true;
             });
         } catch (Exception e) {
-            throw handleException(e, ErrorMessage.ERROR_DELETING_DATA, firedData.getMagazineIdentifier(), null);
+            throw handleException(e, ErrorMessage.ERROR_DELETING_DATA, magazineData.getMagazineIdentifier(), null);
         }
     }
 
@@ -207,9 +207,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     // Retry until the record is non null or there is nothing to fire
-    private FiredData<T> fireWithRetry(final String magazineIdentifier) {
+    private MagazineData<T> fireWithRetry(final String magazineIdentifier) {
         try {
-            return (FiredData<T>) retryerFactory.getFireRetryer()
+            return (MagazineData<T>) retryerFactory.getFireRetryer()
                     .call(() -> {
                         final Integer selectedShard = getRandomShardForFire(magazineIdentifier);
 
@@ -222,11 +222,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                         final long currentLoadPointer = pointerRecord.getLong(Constants.LOAD_POINTER);
                         final long currentFirePointer = pointerRecord.getLong(Constants.FIRE_POINTER);
 
-                        FiredData firedData = null;
+                        MagazineData magazineData = null;
                         if (currentFirePointer < currentLoadPointer) {
                             final long firePointer = incrementAndGetFirePointer(magazineIdentifier, selectedShard)
                                     .getLong(Constants.FIRE_POINTER);
-                            firedData = FiredData.builder()
+                            magazineData = MagazineData.builder()
                                     .firePointer(firePointer)
                                     .shard(selectedShard)
                                     .magazineIdentifier(magazineIdentifier)
@@ -235,7 +235,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                     .build();
                             incrementFireCounter(magazineIdentifier, selectedShard);
                         }
-                        return firedData;
+                        return magazineData;
                     });
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier, null);

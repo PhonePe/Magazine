@@ -1,7 +1,7 @@
 package com.phonepe.growth.magazine.core;
 
 import com.phonepe.growth.magazine.common.Constants;
-import com.phonepe.growth.magazine.common.FiredData;
+import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -29,9 +29,9 @@ public abstract class BaseMagazineStorage<T> {
 
     public abstract boolean reload(final String magazineIdentifier, final T data);
 
-    public abstract FiredData<T> fire(final String magazineIdentifier);
+    public abstract MagazineData<T> fire(final String magazineIdentifier);
 
     public abstract Map<String, MetaData> getMetaData(final String magazineIdentifier);
 
-    public abstract void delete(final FiredData<T> firedData);
+    public abstract void delete(final MagazineData<T> magazineData);
 }
