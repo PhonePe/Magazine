@@ -3,6 +3,7 @@ package com.phonepe.growth.magazine;
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
+import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.exception.ErrorCode;
@@ -16,10 +17,9 @@ import org.junit.Test;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 
-import static org.mockito.Mockito.*;
-
 import java.util.Map;
-import java.util.Optional;
+
+import static org.mockito.Mockito.*;
 
 /**
  * @author shantanu.tiwari
@@ -33,10 +33,10 @@ public class MagazineTest {
     public void setup() throws Exception {
         magazineManager = new MagazineManager("CLIENT_ID");
         magazineManager.refresh(ImmutableList.of(Magazine.builder()
-                .magazineIdentifier("MAGAZINE_ID1")
-                .clientId("CLIENT_ID")
-                .baseMagazineStorage(buildMagazineStorage(String.class))
-                .build(),
+                        .magazineIdentifier("MAGAZINE_ID1")
+                        .clientId("CLIENT_ID")
+                        .baseMagazineStorage(buildMagazineStorage(String.class))
+                        .build(),
                 Magazine.builder()
                         .magazineIdentifier("MAGAZINE_ID2")
                         .clientId("CLIENT_ID")
@@ -77,9 +77,12 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        Optional<String> data = magazine.fire();
-        Assert.assertTrue(data.isPresent());
-        Assert.assertEquals("DATA1", data.get());
+        MagazineData<String> data = magazine.fire();
+        Assert.assertEquals(1, data.getFirePointer());
+        Assert.assertEquals("DATA1", data.getData());
+        magazine.delete(data);
+        Assert.assertNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "DATA_SET", data.createAerospikeKey())));
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -114,11 +117,8 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        Optional<Long> data = magazine.fire();
-        Assert.assertTrue(data.isPresent());
-        Assert.assertEquals(12L,
-                data.get()
-                        .longValue());
+        MagazineData<Long> data = magazine.fire();
+        Assert.assertEquals(12L, data.getData().longValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -153,11 +153,8 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        Optional<Integer> data = magazine.fire();
-        Assert.assertTrue(data.isPresent());
-        Assert.assertEquals(12,
-                data.get()
-                        .intValue());
+        MagazineData<Integer> data = magazine.fire();
+        Assert.assertEquals(12, data.getData().intValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
