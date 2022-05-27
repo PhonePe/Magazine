@@ -234,8 +234,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                         .magazineIdentifier(magazineIdentifier)
                                         .data(clazz.cast(dataRecord.getValue(Constants.DATA)))
                                         .build();
+                                incrementFireCounter(magazineIdentifier, selectedShard);
                             }
-                            incrementFireCounter(magazineIdentifier, selectedShard);
                         }
                         return magazineData;
                     });
