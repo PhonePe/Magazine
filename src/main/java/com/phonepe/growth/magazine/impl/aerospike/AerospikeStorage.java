@@ -226,13 +226,15 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                         if (currentFirePointer < currentLoadPointer) {
                             final long firePointer = incrementAndGetFirePointer(magazineIdentifier, selectedShard)
                                     .getLong(Constants.FIRE_POINTER);
-                            magazineData = MagazineData.builder()
-                                    .firePointer(firePointer)
-                                    .shard(selectedShard)
-                                    .magazineIdentifier(magazineIdentifier)
-                                    .data(clazz.cast(fireData(magazineIdentifier, selectedShard, firePointer)
-                                            .getValue(Constants.DATA)))
-                                    .build();
+                            final Record dataRecord = fireData(magazineIdentifier, selectedShard, firePointer);
+                            if (Objects.nonNull(dataRecord)) {
+                                magazineData = MagazineData.builder()
+                                        .firePointer(firePointer)
+                                        .shard(selectedShard)
+                                        .magazineIdentifier(magazineIdentifier)
+                                        .data(clazz.cast(dataRecord.getValue(Constants.DATA)))
+                                        .build();
+                            }
                             incrementFireCounter(magazineIdentifier, selectedShard);
                         }
                         return magazineData;
