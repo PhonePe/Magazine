@@ -15,12 +15,15 @@ import java.util.Map;
 public abstract class BaseMagazineStorage<T> {
     private final StorageType type;
     private final int recordTtl;
+    private final int metaDataTtl;
     private final boolean enableDeDupe;
     private final int shards;
 
-    public BaseMagazineStorage(final StorageType type, final int recordTtl, final boolean enableDeDupe, final int shards) {
+    public BaseMagazineStorage(final StorageType type, final int recordTtl, final int metaDataTtl,
+                               final boolean enableDeDupe, final int shards) {
         this.type = type;
         this.recordTtl = recordTtl;
+        this.metaDataTtl = metaDataTtl;
         this.enableDeDupe = enableDeDupe;
         this.shards = shards < 1 ? Constants.MIN_SHARDS : shards;
     }
