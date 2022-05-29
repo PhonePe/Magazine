@@ -9,8 +9,9 @@ import java.util.Map;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
-    public HBaseStorage(final int recordTtl, final boolean deDupeEnabled, final int shards) {
-        super(StorageType.HBASE, recordTtl, deDupeEnabled, shards);
+    public HBaseStorage(final int recordTtl, final int metaDataTtl,
+                        final boolean deDupeEnabled, final int shards) {
+        super(StorageType.HBASE, recordTtl, metaDataTtl, deDupeEnabled, shards);
     }
 
     @Override
