@@ -58,7 +58,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             final AerospikeStorageConfig storageConfig,
                             final boolean enableDeDupe,
                             final Class<T> clazz) {
-        super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), enableDeDupe, storageConfig.getShards());
+        super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), storageConfig.getMetaDataTtl(),
+                enableDeDupe, storageConfig.getShards());
         validateClass(clazz, enableDeDupe);
         this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
@@ -261,6 +262,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+                    writePolicy.expiration = getMetaDataTtl();
+
                     final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
@@ -284,6 +287,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .call(() -> {
                     final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+                    writePolicy.expiration = getMetaDataTtl();
 
                     final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
                     return aerospikeClient.operate(writePolicy,
@@ -300,6 +304,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+                    writePolicy.expiration = getMetaDataTtl();
+
                     final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
@@ -321,6 +327,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+                    writePolicy.expiration = getMetaDataTtl();
+
                     final String key = createKey(magazineIdentifier, shard, Constants.COUNTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
@@ -343,6 +351,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
+                    writePolicy.expiration = getMetaDataTtl();
+
                     final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),

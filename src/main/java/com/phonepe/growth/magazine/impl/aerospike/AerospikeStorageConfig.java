@@ -28,4 +28,7 @@ public class AerospikeStorageConfig {
     @Min(1)
     @Builder.Default
     private int shards = 64; //Default 64 shards in a magazine
+    @Min(-2)
+    @Builder.Default
+    private int metaDataTtl = 2 * 30 *24 * 60 * 60; // 2 months default TTL
 }
