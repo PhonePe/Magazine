@@ -8,15 +8,17 @@
     <parent>
         <groupId>com.phonepe</groupId>
         <artifactId>pp-parent-pom</artifactId>
-        <version>0.36</version>
+        <version>0.58</version>
     </parent>
 
     <properties>
         <distributed-lock-manager.version>1.2.0</distributed-lock-manager.version>
-        <lombok.version>1.18.10</lombok.version>
+        <lombok.version>1.18.22</lombok.version>
         <caffeine.version>2.3.3</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
 
+
+        <maven.deploy.skip>false</maven.deploy.skip>
         <!-- Sonar-JaCoCo properties -->
         <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
         <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
