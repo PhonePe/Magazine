@@ -1,4 +1,4 @@
-image: docker.phonepe.com:5000/pp-maven:3.8.4-openjdk-8
+image: docker.phonepe.com:5000/pp-maven:3.8.4-openjdk-17
 
 .default: &default
   only:
@@ -43,7 +43,7 @@ Deploy Snapshot:
   <<: *default
   <<: *default_tag
   script:
-    - mvn deploy -Pdocker -DskipTests=true
+    - mvn deploy -DskipTests=true
   when: manual
 
 Post Merge:
