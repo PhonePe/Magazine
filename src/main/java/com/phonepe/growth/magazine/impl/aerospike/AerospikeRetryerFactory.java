@@ -2,12 +2,15 @@ package com.phonepe.growth.magazine.impl.aerospike;
 
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Record;
-import com.github.rholder.retry.*;
+import com.github.rholder.retry.BlockStrategies;
+import com.github.rholder.retry.Retryer;
+import com.github.rholder.retry.RetryerBuilder;
+import com.github.rholder.retry.StopStrategies;
+import com.github.rholder.retry.WaitStrategies;
 import com.google.common.base.Predicates;
 import com.phonepe.growth.magazine.common.Constants;
-import lombok.Getter;
-
 import java.util.concurrent.TimeUnit;
+import lombok.Getter;
 
 @Getter
 public class AerospikeRetryerFactory<T> {

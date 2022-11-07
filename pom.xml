@@ -3,18 +3,31 @@
 
     <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
-    <version>1.0.15</version>
+    <version>1.1.0</version>
 
     <parent>
         <groupId>com.phonepe</groupId>
         <artifactId>pp-parent-pom</artifactId>
-        <version>0.36</version>
+        <version>0.66</version>
     </parent>
 
     <properties>
+        <!--        Java related properties -->
+        <jdk.source.version>17</jdk.source.version>
+        <jdk.target.version>17</jdk.target.version>
+        <jdk.release.version>8</jdk.release.version>
+        <!--        Maven related properties -->
+        <maven.compiler.plugin.version>3.9.0</maven.compiler.plugin.version>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.deploy.skip>false</maven.deploy.skip>
+
+        <lombok.version>1.18.22</lombok.version>
+        <jackson.version>2.13.0</jackson.version>
+        <mockito.version>4.3.1</mockito.version>
+
         <distributed-lock-manager.version>1.2.0</distributed-lock-manager.version>
-        <lombok.version>1.18.10</lombok.version>
-        <caffeine.version>2.3.3</caffeine.version>
+        <lombok.version>1.18.22</lombok.version>
+        <caffeine.version>2.7.0</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
 
         <!-- Sonar-JaCoCo properties -->
@@ -27,15 +40,9 @@
             **/exception/*.java
         </sonar.exclusions>
         <sonar.skip>false</sonar.skip>
-        <sonar.break.version>1.2.6.2</sonar.break.version>
     </properties>
 
     <dependencies>
-        <dependency>
-            <groupId>com.github.sgoertzen</groupId>
-            <artifactId>sonar-break-maven-plugin</artifactId>
-            <version>${sonar.break.version}</version>
-        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -44,17 +51,22 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
-            <version>2.9.6</version>
+            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
-            <version>2.9.6</version>
+            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.aerospike</groupId>
             <artifactId>aerospike-client</artifactId>
             <version>${aerospike-client.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.11</version>
         </dependency>
         <dependency>
             <groupId>com.github.rholder</groupId>
@@ -69,7 +81,7 @@
         <dependency>
             <groupId>org.hibernate.validator</groupId>
             <artifactId>hibernate-validator</artifactId>
-            <version>6.0.10.Final</version>
+            <version>6.1.7.Final</version>
         </dependency>
         <dependency>
             <groupId>com.phonepe.growth</groupId>
@@ -90,8 +102,9 @@
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
-            <artifactId>mockito-all</artifactId>
-            <version>1.10.19</version>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -100,11 +113,13 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>${maven.compiler.plugin.version}</version>
                 <configuration>
-                    <compilerArgument>-parameters</compilerArgument>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>${jdk.source.version}</source>
+                    <target>${jdk.target.version}</target>
+                    <release>${jdk.release.version}</release>
+                    <showWarnings>true</showWarnings>
+                    <debug>false</debug>
                 </configuration>
             </plugin>
         </plugins>
