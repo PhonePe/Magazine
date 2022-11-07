@@ -1,5 +1,9 @@
 package com.phonepe.growth.magazine;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
@@ -11,15 +15,12 @@ import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.growth.magazine.util.MockAerospikeClient;
+import java.util.Map;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
-
-import java.util.Map;
-
-import static org.mockito.Mockito.*;
 
 /**
  * @author shantanu.tiwari
@@ -32,22 +33,22 @@ public class MagazineTest {
     @Before
     public void setup() throws Exception {
         magazineManager = new MagazineManager("CLIENT_ID");
-        magazineManager.refresh(ImmutableList.of(Magazine.builder()
+        magazineManager.refresh(ImmutableList.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build(),
-                Magazine.builder()
+                Magazine.<Long>builder()
                         .magazineIdentifier("MAGAZINE_ID2")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(Long.class))
                         .build(),
-                Magazine.builder()
+                Magazine.<Integer>builder()
                         .magazineIdentifier("MAGAZINE_ID3")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(Integer.class))
                         .build(),
-                Magazine.builder()
+                Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID4")
                         .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
@@ -56,8 +57,8 @@ public class MagazineTest {
 
     @Test
     public void stringMagazineTest() {
-        Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID1");
-        Magazine magazine2 = magazineManager.getMagazine("MAGAZINE_ID4");
+        Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        Magazine<String> magazine2 = magazineManager.getMagazine("MAGAZINE_ID4");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(0, metaData.getFireCounter());
@@ -100,7 +101,7 @@ public class MagazineTest {
 
     @Test
     public void longMagazineTest() {
-        Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID2");
+        Magazine<Long> magazine = magazineManager.getMagazine("MAGAZINE_ID2");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(0, metaData.getFireCounter());
@@ -136,7 +137,7 @@ public class MagazineTest {
 
     @Test
     public void integerMagazineTest() {
-        Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID3");
+        Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID3");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(0, metaData.getFireCounter());
@@ -174,7 +175,7 @@ public class MagazineTest {
     public void exceptionsTest() throws Exception {
 
         try {
-            Magazine magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+            Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
             magazine.load(12);
             Assert.fail();
         } catch (MagazineException e) {
@@ -183,7 +184,7 @@ public class MagazineTest {
 
         try {
             MagazineManager newMagazineManager = new MagazineManager("CLIENT_ID2");
-            newMagazineManager.refresh(ImmutableList.of(Magazine.builder()
+            newMagazineManager.refresh(ImmutableList.of(Magazine.<Map>builder()
                     .magazineIdentifier("MAGAZINE_ID1")
                     .clientId("CLIENT_ID")
                     .baseMagazineStorage(buildMagazineStorage(Map.class))
@@ -239,7 +240,7 @@ public class MagazineTest {
         }
 
         doThrow(AerospikeException.class).when(aerospikeClientSpyed)
-                .get(any(), Matchers.<Key[]>any());
+                .get(any(), ArgumentMatchers.<Key[]>any());
         try {
             magazine.getMetaData();
             Assert.fail();
@@ -254,7 +255,7 @@ public class MagazineTest {
         }
 
         doThrow(RuntimeException.class).when(aerospikeClientSpyed)
-                .get(any(), Matchers.<Key[]>any());
+                .get(any(), ArgumentMatchers.<Key[]>any());
         try {
             magazine.getMetaData();
             Assert.fail();
@@ -270,8 +271,8 @@ public class MagazineTest {
 
     }
 
-    private BaseMagazineStorage buildMagazineStorage(Class clazz) {
-        return AerospikeStorage.<String>builder()
+    private <T> BaseMagazineStorage<T> buildMagazineStorage(Class<T> clazz) {
+        return AerospikeStorage.<T>builder()
                 .clazz(clazz)
                 .storageConfig(AerospikeStorageConfig.builder()
                         .dataSetName("DATA_SET")
