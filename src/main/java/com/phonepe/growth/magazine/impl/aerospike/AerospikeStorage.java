@@ -18,6 +18,7 @@ import com.github.rholder.retry.RetryException;
 import com.phonepe.growth.dlm.DistributedLockManager;
 import com.phonepe.growth.dlm.exception.DLSException;
 import com.phonepe.growth.dlm.lock.Lock;
+import com.phonepe.growth.dlm.lock.level.LockLevel;
 import com.phonepe.growth.dlm.lock.mode.LockMode;
 import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeLockBase;
 import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeStore;
@@ -61,9 +62,10 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     public AerospikeStorage(final IAerospikeClient aerospikeClient,
                             final AerospikeStorageConfig storageConfig,
                             final boolean enableDeDupe,
+                            final String farmId,
                             final Class<T> clazz) {
         super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), storageConfig.getMetaDataTtl(),
-                enableDeDupe, storageConfig.getShards());
+                farmId, enableDeDupe, storageConfig.getShards());
         validateClass(clazz, enableDeDupe);
         this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
@@ -72,15 +74,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.metaSetName = storageConfig.getMetaSetName();
         this.retryerFactory = new AerospikeRetryerFactory();
         this.activeShardsCache = initializeCache();
-        this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID,
+        this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
                 AerospikeLockBase.builder()
                         .mode(LockMode.EXCLUSIVE)
                         .store(AerospikeStore.builder()
                                 .aerospikeClient(aerospikeClient)
                                 .namespace(namespace)
-                                .setname(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME)
+                                .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
                                 .build())
                         .build());
+        lockManager.initialize();
         if (enableDeDupe) {
             createIndex(dataSetName, Constants.DATA);
         }
@@ -90,7 +93,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     public boolean load(final String magazineIdentifier, final T data) {
         validateDataType(data);
         final Lock lock = lockManager
-                .getLockInstance(String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()));
+                .getLockInstance(String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), LockLevel.DC);
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
@@ -118,7 +121,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     public boolean reload(final String magazineIdentifier, final T data) {
         validateDataType(data);
         final Lock lock = lockManager
-                .getLockInstance(String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()));
+                .getLockInstance(String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), LockLevel.DC);
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
