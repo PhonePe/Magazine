@@ -25,7 +25,7 @@
         <jackson.version>2.13.0</jackson.version>
         <mockito.version>4.3.1</mockito.version>
 
-        <distributed-lock-manager.version>1.2.0</distributed-lock-manager.version>
+        <distributed-lock-manager.version>3.0.2</distributed-lock-manager.version>
         <lombok.version>1.18.22</lombok.version>
         <caffeine.version>2.7.0</caffeine.version>
         <aerospike-client.version>4.4.2</aerospike-client.version>
