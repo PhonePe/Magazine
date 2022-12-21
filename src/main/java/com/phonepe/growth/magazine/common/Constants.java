@@ -23,7 +23,7 @@ public class Constants {
 
     public static final String SHARD_PREFIX = "SHARD";
     public static final String SHARDS_BIN = "SHARDS";
-    public static final String MAGAZINE_DISTRIBUTED_LOCK_SET_NAME = "magazine_distributed_lock";
+    public static final String MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX = "magazine_distributed_lock";
     public static final String DLM_CLIENT_ID = "magazine";
 
     public static final int DEFAULT_REFRESH = 5;
