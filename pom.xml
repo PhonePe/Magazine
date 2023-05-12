@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.phonepe.growth</groupId>
         <artifactId>growth-parent-pom</artifactId>
-        <version>1.0.14-SNAPSHOT</version>
+        <version>1.0.15</version>
     </parent>
 
     <properties>
@@ -24,7 +24,7 @@
         <jackson.version>2.13.0</jackson.version>
         <mockito.version>4.3.1</mockito.version>
 
-        <distributed-lock-manager.version>3.0.3-SNAPSHOT</distributed-lock-manager.version>
+        <distributed-lock-manager.version>3.0.3</distributed-lock-manager.version>
         <lombok.version>1.18.22</lombok.version>
         <caffeine.version>2.7.0</caffeine.version>
 
