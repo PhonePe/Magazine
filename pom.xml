@@ -1,14 +1,13 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.phonepe.growth</groupId>
     <artifactId>magazine</artifactId>
-    <version>1.1.1</version>
+    <version>1.1.2</version>
 
     <parent>
-        <groupId>com.phonepe</groupId>
-        <artifactId>pp-parent-pom</artifactId>
-        <version>0.66</version>
+        <groupId>com.phonepe.growth</groupId>
+        <artifactId>growth-parent-pom</artifactId>
+        <version>1.0.15</version>
     </parent>
 
     <properties>
@@ -25,16 +24,11 @@
         <jackson.version>2.13.0</jackson.version>
         <mockito.version>4.3.1</mockito.version>
 
-        <distributed-lock-manager.version>3.0.2</distributed-lock-manager.version>
+        <distributed-lock-manager.version>3.0.3</distributed-lock-manager.version>
         <lombok.version>1.18.22</lombok.version>
         <caffeine.version>2.7.0</caffeine.version>
-        <aerospike-client.version>4.4.2</aerospike-client.version>
 
         <!-- Sonar-JaCoCo properties -->
-        <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
-        <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
-        <sonar.jacoco.reportPaths>${project.basedir}/../target/jacoco.exec</sonar.jacoco.reportPaths>
-        <sonar.language>java</sonar.language>
         <sonar.exclusions>
             **/HBase*.java,
             **/exception/*.java
@@ -61,7 +55,7 @@
         <dependency>
             <groupId>com.aerospike</groupId>
             <artifactId>aerospike-client</artifactId>
-            <version>${aerospike-client.version}</version>
+            <version>${gpp.aerospike.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
