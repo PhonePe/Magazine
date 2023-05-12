@@ -2,6 +2,8 @@ package com.phonepe.growth.magazine.util;
 
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.BatchRead;
+import com.aerospike.client.BatchRecord;
+import com.aerospike.client.BatchResults;
 import com.aerospike.client.Bin;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Key;
@@ -15,21 +17,32 @@ import com.aerospike.client.admin.Privilege;
 import com.aerospike.client.admin.Role;
 import com.aerospike.client.admin.User;
 import com.aerospike.client.async.EventLoop;
+import com.aerospike.client.cdt.CTX;
+import com.aerospike.client.cluster.Cluster;
 import com.aerospike.client.cluster.ClusterStats;
 import com.aerospike.client.cluster.Node;
+import com.aerospike.client.exp.Expression;
 import com.aerospike.client.listener.BatchListListener;
+import com.aerospike.client.listener.BatchOperateListListener;
+import com.aerospike.client.listener.BatchRecordArrayListener;
+import com.aerospike.client.listener.BatchRecordSequenceListener;
 import com.aerospike.client.listener.BatchSequenceListener;
 import com.aerospike.client.listener.DeleteListener;
 import com.aerospike.client.listener.ExecuteListener;
 import com.aerospike.client.listener.ExistsArrayListener;
 import com.aerospike.client.listener.ExistsListener;
 import com.aerospike.client.listener.ExistsSequenceListener;
+import com.aerospike.client.listener.IndexListener;
+import com.aerospike.client.listener.InfoListener;
 import com.aerospike.client.listener.RecordArrayListener;
 import com.aerospike.client.listener.RecordListener;
 import com.aerospike.client.listener.RecordSequenceListener;
 import com.aerospike.client.listener.WriteListener;
 import com.aerospike.client.policy.AdminPolicy;
+import com.aerospike.client.policy.BatchDeletePolicy;
 import com.aerospike.client.policy.BatchPolicy;
+import com.aerospike.client.policy.BatchUDFPolicy;
+import com.aerospike.client.policy.BatchWritePolicy;
 import com.aerospike.client.policy.GenerationPolicy;
 import com.aerospike.client.policy.InfoPolicy;
 import com.aerospike.client.policy.Policy;
@@ -38,6 +51,8 @@ import com.aerospike.client.policy.ScanPolicy;
 import com.aerospike.client.policy.WritePolicy;
 import com.aerospike.client.query.IndexCollectionType;
 import com.aerospike.client.query.IndexType;
+import com.aerospike.client.query.PartitionFilter;
+import com.aerospike.client.query.QueryListener;
 import com.aerospike.client.query.RecordSet;
 import com.aerospike.client.query.ResultSet;
 import com.aerospike.client.query.Statement;
@@ -109,6 +124,11 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public ClusterStats getClusterStats() {
+        return null;
+    }
+
+    @Override
+    public Cluster getCluster() {
         return null;
     }
 
@@ -230,6 +250,31 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void delete(EventLoop eventLoop, DeleteListener listener, WritePolicy policy, Key key) throws AerospikeException {
+
+    }
+
+    @Override
+    public BatchResults delete(BatchPolicy batchPolicy,
+            BatchDeletePolicy batchDeletePolicy,
+            Key[] keys) throws AerospikeException {
+        return null;
+    }
+
+    @Override
+    public void delete(EventLoop eventLoop,
+            BatchRecordArrayListener batchRecordArrayListener,
+            BatchPolicy batchPolicy,
+            BatchDeletePolicy batchDeletePolicy,
+            Key[] keys) throws AerospikeException {
+
+    }
+
+    @Override
+    public void delete(EventLoop eventLoop,
+            BatchRecordSequenceListener batchRecordSequenceListener,
+            BatchPolicy batchPolicy,
+            BatchDeletePolicy batchDeletePolicy,
+            Key[] keys) throws AerospikeException {
 
     }
 
@@ -494,6 +539,31 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     }
 
+    @Override
+    public Record[] get(BatchPolicy batchPolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
+        return new Record[0];
+    }
+
+    @Override
+    public void get(EventLoop eventLoop,
+            RecordArrayListener recordArrayListener,
+            BatchPolicy batchPolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
+
+    }
+
+    @Override
+    public void get(EventLoop eventLoop,
+            RecordSequenceListener recordSequenceListener,
+            BatchPolicy batchPolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
+
+    }
+
     /**
      * Read multiple record header data for specified keys in one batch call.
      * The returned records are in positional order with the original key array
@@ -564,6 +634,56 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void operate(EventLoop eventLoop, RecordListener listener, WritePolicy policy, Key key, Operation... operations) throws AerospikeException {
+
+    }
+
+    @Override
+    public boolean operate(BatchPolicy batchPolicy,
+            List<BatchRecord> list) throws AerospikeException {
+        return false;
+    }
+
+    @Override
+    public void operate(EventLoop eventLoop,
+            BatchOperateListListener batchOperateListListener,
+            BatchPolicy batchPolicy,
+            List<BatchRecord> list) throws AerospikeException {
+
+    }
+
+    @Override
+    public void operate(EventLoop eventLoop,
+            BatchRecordSequenceListener batchRecordSequenceListener,
+            BatchPolicy batchPolicy,
+            List<BatchRecord> list) throws AerospikeException {
+
+    }
+
+    @Override
+    public BatchResults operate(BatchPolicy batchPolicy,
+            BatchWritePolicy batchWritePolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
+        return null;
+    }
+
+    @Override
+    public void operate(EventLoop eventLoop,
+            BatchRecordArrayListener batchRecordArrayListener,
+            BatchPolicy batchPolicy,
+            BatchWritePolicy batchWritePolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
+
+    }
+
+    @Override
+    public void operate(EventLoop eventLoop,
+            BatchRecordSequenceListener batchRecordSequenceListener,
+            BatchPolicy batchPolicy,
+            BatchWritePolicy batchWritePolicy,
+            Key[] keys,
+            Operation... operations) throws AerospikeException {
 
     }
 
@@ -640,6 +760,27 @@ public class MockAerospikeClient implements IAerospikeClient {
             throws AerospikeException {
         throw new UnsupportedOperationException(
                 "scanNode is not supported in MockAerospike");
+
+    }
+
+    @Override
+    public void scanPartitions(ScanPolicy scanPolicy,
+            PartitionFilter partitionFilter,
+            String s,
+            String s1,
+            ScanCallback scanCallback,
+            String... strings) throws AerospikeException {
+
+    }
+
+    @Override
+    public void scanPartitions(EventLoop eventLoop,
+            RecordSequenceListener recordSequenceListener,
+            ScanPolicy scanPolicy,
+            PartitionFilter partitionFilter,
+            String s,
+            String s1,
+            String... strings) throws AerospikeException {
 
     }
 
@@ -720,6 +861,40 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     }
 
+    @Override
+    public BatchResults execute(BatchPolicy batchPolicy,
+            BatchUDFPolicy batchUDFPolicy,
+            Key[] keys,
+            String s,
+            String s1,
+            Value... values) throws AerospikeException {
+        return null;
+    }
+
+    @Override
+    public void execute(EventLoop eventLoop,
+            BatchRecordArrayListener batchRecordArrayListener,
+            BatchPolicy batchPolicy,
+            BatchUDFPolicy batchUDFPolicy,
+            Key[] keys,
+            String s,
+            String s1,
+            Value... values) throws AerospikeException {
+
+    }
+
+    @Override
+    public void execute(EventLoop eventLoop,
+            BatchRecordSequenceListener batchRecordSequenceListener,
+            BatchPolicy batchPolicy,
+            BatchUDFPolicy batchUDFPolicy,
+            Key[] keys,
+            String s,
+            String s1,
+            Value... values) throws AerospikeException {
+
+    }
+
     /**
      * Apply user defined function on records that match the statement filter.
      * Records are not returned to the client. This asynchronous server call
@@ -767,6 +942,13 @@ public class MockAerospikeClient implements IAerospikeClient {
                 "execute is not supported in MockAerospike");
     }
 
+    @Override
+    public ExecuteTask execute(WritePolicy writePolicy,
+            Statement statement,
+            Operation... operations) throws AerospikeException {
+        return null;
+    }
+
     /**
      * Execute query on all server nodes and return record iterator. The query
      * executor puts records on a queue in separate threads. The calling thread
@@ -789,6 +971,21 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     }
 
+    @Override
+    public void query(QueryPolicy queryPolicy,
+            Statement statement,
+            QueryListener queryListener) throws AerospikeException {
+
+    }
+
+    @Override
+    public void query(QueryPolicy queryPolicy,
+            Statement statement,
+            PartitionFilter partitionFilter,
+            QueryListener queryListener) throws AerospikeException {
+
+    }
+
     /**
      * Execute query on a single server node and return record iterator. The
      * query executor puts records on a queue in a separate thread. The calling
@@ -806,6 +1003,22 @@ public class MockAerospikeClient implements IAerospikeClient {
                                Node node) throws AerospikeException {
         throw new UnsupportedOperationException(
                 "queryNode is not supported in MockAerospike");
+    }
+
+    @Override
+    public RecordSet queryPartitions(QueryPolicy queryPolicy,
+            Statement statement,
+            PartitionFilter partitionFilter) throws AerospikeException {
+        return null;
+    }
+
+    @Override
+    public void queryPartitions(EventLoop eventLoop,
+            RecordSequenceListener recordSequenceListener,
+            QueryPolicy queryPolicy,
+            Statement statement,
+            PartitionFilter partitionFilter) throws AerospikeException {
+
     }
 
     /**
@@ -859,6 +1072,32 @@ public class MockAerospikeClient implements IAerospikeClient {
         throw new AerospikeException(200);
     }
 
+    @Override
+    public IndexTask createIndex(Policy policy,
+            String s,
+            String s1,
+            String s2,
+            String s3,
+            IndexType indexType,
+            IndexCollectionType indexCollectionType,
+            CTX... ctxes) throws AerospikeException {
+        return null;
+    }
+
+    @Override
+    public void createIndex(EventLoop eventLoop,
+            IndexListener indexListener,
+            Policy policy,
+            String s,
+            String s1,
+            String s2,
+            String s3,
+            IndexType indexType,
+            IndexCollectionType indexCollectionType,
+            CTX... ctxes) throws AerospikeException {
+
+    }
+
     /**
      * Create complex secondary index to be used on bins containing collections.
      * This asynchronous server call will return before command is complete. The
@@ -898,6 +1137,33 @@ public class MockAerospikeClient implements IAerospikeClient {
                                String indexName) throws AerospikeException {
         throw new UnsupportedOperationException(
                 "dropIndex is not supported in MockAerospike");
+    }
+
+    @Override
+    public void dropIndex(EventLoop eventLoop,
+            IndexListener indexListener,
+            Policy policy,
+            String s,
+            String s1,
+            String s2) throws AerospikeException {
+
+    }
+
+    @Override
+    public void info(EventLoop eventLoop,
+            InfoListener infoListener,
+            InfoPolicy infoPolicy,
+            Node node,
+            String... strings) throws AerospikeException {
+
+    }
+
+    @Override
+    public void setXDRFilter(InfoPolicy infoPolicy,
+            String s,
+            String s1,
+            Expression expression) throws AerospikeException {
+
     }
 
     /**
@@ -993,6 +1259,24 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     }
 
+    @Override
+    public void createRole(AdminPolicy adminPolicy,
+            String s,
+            List<Privilege> list,
+            List<String> list1) throws AerospikeException {
+
+    }
+
+    @Override
+    public void createRole(AdminPolicy adminPolicy,
+            String s,
+            List<Privilege> list,
+            List<String> list1,
+            int i,
+            int i1) throws AerospikeException {
+
+    }
+
     /**
      * Drop user defined role.
      *
@@ -1034,6 +1318,21 @@ public class MockAerospikeClient implements IAerospikeClient {
                                  List<Privilege> privileges) throws AerospikeException {
         throw new UnsupportedOperationException(
                 "revokePrivileges is not supported in MockAerospike");
+
+    }
+
+    @Override
+    public void setWhitelist(AdminPolicy adminPolicy,
+            String s,
+            List<String> list) throws AerospikeException {
+
+    }
+
+    @Override
+    public void setQuotas(AdminPolicy adminPolicy,
+            String s,
+            int i,
+            int i1) throws AerospikeException {
 
     }
 
@@ -1127,14 +1426,34 @@ public class MockAerospikeClient implements IAerospikeClient {
     }
 
     @Override
+    public BatchPolicy getBatchParentPolicyWriteDefault() {
+        return null;
+    }
+
+    @Override
+    public BatchWritePolicy getBatchWritePolicyDefault() {
+        return null;
+    }
+
+    @Override
+    public BatchDeletePolicy getBatchDeletePolicyDefault() {
+        return null;
+    }
+
+    @Override
+    public BatchUDFPolicy getBatchUDFPolicyDefault() {
+        return null;
+    }
+
+    @Override
     public InfoPolicy getInfoPolicyDefault() {
         return new InfoPolicy();
     }
 
     @Override
-    public void get(BatchPolicy policy, List<BatchRead> records)
+    public boolean get(BatchPolicy policy, List<BatchRead> records)
             throws AerospikeException {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
