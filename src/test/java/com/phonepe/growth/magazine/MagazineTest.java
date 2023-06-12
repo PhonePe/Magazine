@@ -35,22 +35,18 @@ public class MagazineTest {
         magazineManager = new MagazineManager("CLIENT_ID");
         magazineManager.refresh(ImmutableList.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
-                        .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build(),
                 Magazine.<Long>builder()
                         .magazineIdentifier("MAGAZINE_ID2")
-                        .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(Long.class))
                         .build(),
                 Magazine.<Integer>builder()
                         .magazineIdentifier("MAGAZINE_ID3")
-                        .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(Integer.class))
                         .build(),
                 Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID4")
-                        .clientId("CLIENT_ID")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build()));
     }
@@ -68,6 +64,7 @@ public class MagazineTest {
 
         boolean success = magazine.load("DATA1");
         Assert.assertTrue(success);
+        magazine.load("DATA1");
 
         success = magazine2.load("DATA1");
         Assert.assertTrue(success);
@@ -183,18 +180,6 @@ public class MagazineTest {
         }
 
         try {
-            MagazineManager newMagazineManager = new MagazineManager("CLIENT_ID2");
-            newMagazineManager.refresh(ImmutableList.of(Magazine.<Map>builder()
-                    .magazineIdentifier("MAGAZINE_ID1")
-                    .clientId("CLIENT_ID")
-                    .baseMagazineStorage(buildMagazineStorage(Map.class))
-                    .build()));
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.UNSUPPORTED_CLASS_FOR_DEDUPE, e.getErrorCode());
-        }
-
-        try {
             magazineManager.getMagazine("MAGAZINE1234");
             Assert.fail();
         } catch (MagazineException e) {
@@ -210,7 +195,6 @@ public class MagazineTest {
 
         final Magazine<Long> magazine = Magazine.<Long>builder()
                 .magazineIdentifier("MAGAZINE_ID")
-                .clientId("CLIENT_ID")
                 .baseMagazineStorage(AerospikeStorage.<Long>builder()
                         .clazz(Long.class)
                         .storageConfig(AerospikeStorageConfig.builder()
@@ -221,6 +205,7 @@ public class MagazineTest {
                                 .build())
                         .aerospikeClient(aerospikeClientSpyed)
                         .enableDeDupe(true)
+                        .clientId("CLIENT_ID")
                         .build())
                 .build();
         try {
@@ -282,6 +267,7 @@ public class MagazineTest {
                         .build())
                 .aerospikeClient(aerospikeClient)
                 .enableDeDupe(true)
+                .clientId("CLIENT_ID")
                 .build();
     }
 
