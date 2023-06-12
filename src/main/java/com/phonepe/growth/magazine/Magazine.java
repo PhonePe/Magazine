@@ -21,14 +21,12 @@ import java.util.concurrent.ExecutionException;
 
 @Data
 public class Magazine<T> {
-    private final String clientId;
     private final BaseMagazineStorage<T> baseMagazineStorage;
     private final String magazineIdentifier;
 
     @Builder
-    public Magazine(final String clientId, final BaseMagazineStorage<T> baseMagazineStorage,
+    public Magazine(final BaseMagazineStorage<T> baseMagazineStorage,
                     final String magazineIdentifier) throws ExecutionException, RetryException {
-        this.clientId = clientId;
         this.magazineIdentifier = magazineIdentifier;
         this.baseMagazineStorage = baseMagazineStorage;
         validateStorage(baseMagazineStorage);

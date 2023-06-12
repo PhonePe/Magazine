@@ -19,16 +19,23 @@ public abstract class BaseMagazineStorage<T> {
     private final boolean enableDeDupe;
     private final int shards;
     private final String farmId;
+    private final String clientId;
 
-    public BaseMagazineStorage(final StorageType type, final int recordTtl,
-                               final int metaDataTtl, final String farmId,
-                               final boolean enableDeDupe, final int shards) {
+    public BaseMagazineStorage(
+            final StorageType type,
+            final int recordTtl,
+            final int metaDataTtl,
+            final String farmId,
+            final boolean enableDeDupe,
+            final int shards,
+            final String clientId) {
         this.type = type;
         this.recordTtl = recordTtl;
         this.metaDataTtl = metaDataTtl;
         this.enableDeDupe = enableDeDupe;
         this.farmId = farmId;
         this.shards = shards < 1 ? Constants.MIN_SHARDS : shards;
+        this.clientId = clientId;
     }
 
     public abstract boolean load(final String magazineIdentifier, final T data);
