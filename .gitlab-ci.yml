@@ -33,8 +33,9 @@ Build Package:
 
 Pre Merge:
   stage: quality
-  <<: *default
   <<: *default_tag
+  only:
+    - merge_requests
   script:
     - mvn clean verify -U -Pquality_check -Dsonar.pullrequest.key=$CI_MERGE_REQUEST_ID -Dsonar.pullrequest.branch=$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME -Dsonar.pullrequest.base=$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
 
