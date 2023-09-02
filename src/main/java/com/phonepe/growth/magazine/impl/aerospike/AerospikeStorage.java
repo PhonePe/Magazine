@@ -25,11 +25,9 @@ import com.phonepe.growth.magazine.util.ErrorMessage;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import org.apache.commons.lang3.tuple.Pair;
 import java.security.SecureRandom;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -189,6 +187,36 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             });
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_DELETING_DATA, magazineData.getMagazineIdentifier(), null);
+        }
+    }
+
+    @Override
+    public Set<MagazineData<T>> peek(final String magazineIdentifier, final Map<Integer, Set<Long>> shardPointersMap) {
+        try {
+            // Builds keys
+            final List<Pair<Key, MagazineData.MagazineDataBuilder<T>>> keyAndMagazineDataBuilderList =
+                    buildKeyAndMagazineDataList(magazineIdentifier, shardPointersMap);
+
+            // Fetch records
+            final Record[] records = (Record[]) retryerFactory.getRetryer()
+                    .call(() -> aerospikeClient.get(
+                            aerospikeClient.getBatchPolicyDefault(),
+                            keyAndMagazineDataBuilderList.stream()
+                                    .map(Pair::getKey)
+                                    .collect(Collectors.toList())
+                                    .toArray(Key[]::new))
+                    );
+
+            return IntStream.range(0, keyAndMagazineDataBuilderList.size())
+                    .boxed()
+                    .filter(i -> Objects.nonNull(records[i]))
+                    .map(i -> keyAndMagazineDataBuilderList.get(i)
+                            .getRight()
+                            .data(clazz.cast(records[i].getValue(Constants.DATA)))
+                            .build())
+                    .collect(Collectors.toSet());
+        } catch (Exception e) {
+            throw handleException(e, ErrorMessage.ERROR_PEEKING_DATA, magazineIdentifier, null);
         }
     }
 
@@ -389,6 +417,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
         return activeShards;
     }
+
     // Key contains shard number if shard is non null
     private String createKey(final String magazineIdentifier, final Integer shard, final String suffix) {
         return shard != null
@@ -454,6 +483,31 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 DEDUPER_SET_FORMAT.formatted(getClientId()),
                 magazineIdentifier + data
         );
+    }
+
+    private List<Pair<Key, MagazineData.MagazineDataBuilder<T>>> buildKeyAndMagazineDataList(
+            final String magazineIdentifier,
+            final Map<Integer, Set<Long>> shardPointersMap) {
+        return shardPointersMap.entrySet()
+                .stream()
+                .flatMap(shardPointersEntry ->
+                        shardPointersEntry.getValue()
+                                .stream()
+                                .map(pointer -> Pair.of(
+                                        createKey(magazineIdentifier, shardPointersEntry.getKey(), String.valueOf(pointer)),
+                                        MagazineData.<T>builder()
+                                                .firePointer(pointer)
+                                                .shard(shardPointersEntry.getKey())
+                                                .magazineIdentifier(magazineIdentifier)
+                                ))
+                                .collect(Collectors.toSet())
+                                .stream()
+                )
+                .map(keyAndMagazineDataPair -> Pair.of(
+                        new Key(namespace, dataSetName, keyAndMagazineDataPair.getLeft()),
+                        keyAndMagazineDataPair.getRight()
+                ))
+                .collect(Collectors.toList());
     }
 
     private AsyncLoadingCache<String, List<String>> initializeCache() {

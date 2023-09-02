@@ -6,6 +6,7 @@ import com.phonepe.growth.magazine.core.BaseMagazineStorage;
 import com.phonepe.growth.magazine.core.StorageType;
 
 import java.util.Map;
+import java.util.Set;
 
 public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
@@ -36,6 +37,11 @@ public class HBaseStorage<T> extends BaseMagazineStorage<T> {
 
     @Override
     public void delete(MagazineData<T> magazineData) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Set<MagazineData<T>> peek(String magazineIdentifier, Map<Integer, Set<Long>> shardPointersMap) {
         throw new UnsupportedOperationException();
     }
 }

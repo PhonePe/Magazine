@@ -17,6 +17,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 @Data
@@ -50,6 +51,10 @@ public class Magazine<T> {
 
     public Map<String, MetaData> getMetaData() {
         return baseMagazineStorage.getMetaData(magazineIdentifier);
+    }
+
+    public Set<MagazineData<T>> peek(final Map<Integer, Set<Long>> shardPointersMap) {
+        return baseMagazineStorage.peek(magazineIdentifier, shardPointersMap);
     }
 
     @SuppressWarnings("unchecked")

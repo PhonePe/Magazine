@@ -1,5 +1,6 @@
 package com.phonepe.growth.magazine;
 
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -7,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.google.common.collect.ImmutableList;
+import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
 import com.phonepe.growth.magazine.core.BaseMagazineStorage;
@@ -15,7 +17,10 @@ import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.growth.magazine.util.MockAerospikeClient;
+import java.security.SecureRandom;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,6 +32,7 @@ import org.mockito.Mockito;
  */
 @SuppressWarnings("unchecked")
 public class MagazineTest {
+    private final Random random = new SecureRandom();
     private MagazineManager magazineManager;
     private MockAerospikeClient aerospikeClient = new MockAerospikeClient();
 
@@ -94,6 +100,32 @@ public class MagazineTest {
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getLoadCounter());
         Assert.assertEquals(2, metaData.getLoadPointer());
+    }
+
+    @Test
+    public void magazinePeekTest() {
+        Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        magazine.load("DATA1");
+        magazine.load("DATA2");
+        magazine.load("DATA3");
+        magazine.load("DATA4");
+        magazine.load("DATA5");
+        Map<String, MetaData> detailedMetaData = magazine.getMetaData();
+        String shardId = detailedMetaData.keySet().stream()
+                .filter(shard -> detailedMetaData.get(shard).getLoadPointer() > 0).findAny().get();
+        long randomPointerInShard = detailedMetaData.get(shardId).getLoadPointer() > 1
+                ? random.nextLong(1, detailedMetaData.get(shardId).getLoadPointer())
+                : 1;
+        Set<MagazineData<String>> magazineDataSet = magazine.peek(
+                Map.of(
+                        Integer.parseInt(shardId.substring(shardId.indexOf(Constants.KEY_DELIMITER) + 1)),
+                        Set.of(randomPointerInShard),
+                        32,
+                        Set.of(10L, 20L)
+                )
+        );
+        Assert.assertFalse(magazineDataSet.isEmpty());
+        Assert.assertNotNull(magazineDataSet.stream().findAny().get().getData());
     }
 
     @Test
@@ -253,7 +285,12 @@ public class MagazineTest {
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
         }
-
+        try {
+            magazine.peek(anyMap());
+            Assert.fail();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
+        }
     }
 
     private <T> BaseMagazineStorage<T> buildMagazineStorage(Class<T> clazz) {
