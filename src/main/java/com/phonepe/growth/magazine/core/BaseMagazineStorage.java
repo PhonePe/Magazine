@@ -8,6 +8,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @EqualsAndHashCode
@@ -38,13 +39,63 @@ public abstract class BaseMagazineStorage<T> {
         this.clientId = clientId;
     }
 
-    public abstract boolean load(final String magazineIdentifier, final T data);
+    /**
+     * Load data into the specified magazine.
+     *
+     * @param magazineIdentifier The identifier of the magazine to load data into.
+     * @param data The data to be loaded.
+     * @return True if the data was successfully loaded, false otherwise.
+     */
+    public abstract boolean load(
+            final String magazineIdentifier,
+            final T data
+    );
 
-    public abstract boolean reload(final String magazineIdentifier, final T data);
+    /**
+     * Reload data into the specified magazine. This won't increase the load counter as the data was already loaded,
+     * but load pointer will be incremented as the data will appended at the end.
+     *
+     * @param magazineIdentifier The identifier of the magazine to reload data into.
+     * @param data The data to be reloaded.
+     * @return True if the data was successfully reloaded, false otherwise.
+     */
+    public abstract boolean reload(
+            final String magazineIdentifier,
+            final T data
+    );
 
+    /**
+     * Fire and retrieve data from the specified magazine.
+     *
+     * @param magazineIdentifier The identifier of the magazine to retrieve data from.
+     * @return The MagazineData containing the fired data.
+     */
     public abstract MagazineData<T> fire(final String magazineIdentifier);
 
+    /**
+     * Retrieve metadata of the specified magazine i.e the number of loaded or fired, pointers and counters.
+     *
+     * @param magazineIdentifier The identifier of the magazine to get metadata from.
+     * @return A map containing metadata information.
+     */
     public abstract Map<String, MetaData> getMetaData(final String magazineIdentifier);
 
+    /**
+     * Delete the provided MagazineData from the magazine.
+     *
+     * @param magazineData The MagazineData to be deleted.
+     */
     public abstract void delete(final MagazineData<T> magazineData);
+
+    /**
+     * Peek data from specific shards and pointers within the magazine.
+     *
+     * @param magazineIdentifier The identifier of the magazine to peek from.
+     * @param shardPointersMap A map where keys are shard identifiers and values are sets of pointers to peek from.
+     * @return A set of MagazineData containing the peeked data.
+     */
+    public abstract Set<MagazineData<T>> peek(
+            final String magazineIdentifier,
+            final Map<Integer, Set<Long>> shardPointersMap
+    );
 }
