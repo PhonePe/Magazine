@@ -3,17 +3,19 @@ package com.phonepe.growth.magazine.core;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MagazineData;
 import com.phonepe.growth.magazine.common.MetaData;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
-
+import com.phonepe.growth.magazine.scope.MagazineScope;
+import com.phonepe.growth.magazine.util.CommonUtils;
 import java.util.Map;
 import java.util.Set;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 
-@Data
+@Getter
 @EqualsAndHashCode
 @ToString
 public abstract class BaseMagazineStorage<T> {
+
     private final StorageType type;
     private final int recordTtl;
     private final int metaDataTtl;
@@ -21,6 +23,7 @@ public abstract class BaseMagazineStorage<T> {
     private final int shards;
     private final String farmId;
     private final String clientId;
+    private final MagazineScope scope;
 
     public BaseMagazineStorage(
             final StorageType type,
@@ -29,14 +32,20 @@ public abstract class BaseMagazineStorage<T> {
             final String farmId,
             final boolean enableDeDupe,
             final int shards,
-            final String clientId) {
+            final String clientId,
+            final MagazineScope scope) {
         this.type = type;
         this.recordTtl = recordTtl;
         this.metaDataTtl = metaDataTtl;
         this.enableDeDupe = enableDeDupe;
         this.farmId = farmId;
-        this.shards = shards < 1 ? Constants.MIN_SHARDS : shards;
+        this.shards = shards < 1
+                ? Constants.MIN_SHARDS
+                : shards;
         this.clientId = clientId;
+        this.scope = scope;
+
+        CommonUtils.validateMagazineScope(scope);
     }
 
     /**

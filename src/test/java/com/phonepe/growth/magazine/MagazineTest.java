@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
+import com.github.rholder.retry.RetryException;
 import com.google.common.collect.ImmutableList;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MagazineData;
@@ -16,11 +17,13 @@ import com.phonepe.growth.magazine.exception.ErrorCode;
 import com.phonepe.growth.magazine.exception.MagazineException;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.growth.magazine.impl.aerospike.AerospikeStorageConfig;
+import com.phonepe.growth.magazine.scope.MagazineScope;
 import com.phonepe.growth.magazine.util.MockAerospikeClient;
 import java.security.SecureRandom;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -32,6 +35,7 @@ import org.mockito.Mockito;
  */
 @SuppressWarnings("unchecked")
 public class MagazineTest {
+
     private final Random random = new SecureRandom();
     private MagazineManager magazineManager;
     private MockAerospikeClient aerospikeClient = new MockAerospikeClient();
@@ -111,10 +115,16 @@ public class MagazineTest {
         magazine.load("DATA4");
         magazine.load("DATA5");
         Map<String, MetaData> detailedMetaData = magazine.getMetaData();
-        String shardId = detailedMetaData.keySet().stream()
-                .filter(shard -> detailedMetaData.get(shard).getLoadPointer() > 0).findAny().get();
-        long randomPointerInShard = detailedMetaData.get(shardId).getLoadPointer() > 1
-                ? random.nextLong(1, detailedMetaData.get(shardId).getLoadPointer())
+        String shardId = detailedMetaData.keySet()
+                .stream()
+                .filter(shard -> detailedMetaData.get(shard)
+                        .getLoadPointer() > 0)
+                .findAny()
+                .get();
+        long randomPointerInShard = detailedMetaData.get(shardId)
+                .getLoadPointer() > 1
+                ? random.nextLong(1, detailedMetaData.get(shardId)
+                .getLoadPointer())
                 : 1;
         Set<MagazineData<String>> magazineDataSet = magazine.peek(
                 Map.of(
@@ -125,7 +135,10 @@ public class MagazineTest {
                 )
         );
         Assert.assertFalse(magazineDataSet.isEmpty());
-        Assert.assertNotNull(magazineDataSet.stream().findAny().get().getData());
+        Assert.assertNotNull(magazineDataSet.stream()
+                .findAny()
+                .get()
+                .getData());
     }
 
     @Test
@@ -148,7 +161,8 @@ public class MagazineTest {
         Assert.assertEquals(1, metaData.getLoadPointer());
 
         MagazineData<Long> data = magazine.fire();
-        Assert.assertEquals(12L, data.getData().longValue());
+        Assert.assertEquals(12L, data.getData()
+                .longValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -184,7 +198,8 @@ public class MagazineTest {
         Assert.assertEquals(1, metaData.getLoadPointer());
 
         MagazineData<Integer> data = magazine.fire();
-        Assert.assertEquals(12, data.getData().intValue());
+        Assert.assertEquals(12, data.getData()
+                .intValue());
 
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getFireCounter());
@@ -220,6 +235,30 @@ public class MagazineTest {
     }
 
     @Test
+    public void notImplementedGlobalScopeTest() throws ExecutionException, RetryException {
+        try {
+            Magazine.<Long>builder()
+                    .magazineIdentifier("MAGAZINE_ID")
+                    .baseMagazineStorage(AerospikeStorage.<Long>builder()
+                            .clazz(Long.class)
+                            .storageConfig(AerospikeStorageConfig.builder()
+                                    .dataSetName("DATA_SET")
+                                    .metaSetName("META_SET")
+                                    .namespace("NAMESPACE")
+                                    .shards(16)
+                                    .build())
+                            .aerospikeClient(aerospikeClient)
+                            .enableDeDupe(true)
+                            .clientId("CLIENT_ID")
+                            .scope(MagazineScope.LOCAL)
+                            .build())
+                    .build();
+        } catch (MagazineException e) {
+            Assert.assertEquals(ErrorCode.NOT_IMPLEMENTED, e.getErrorCode());
+        }
+    }
+
+    @Test
     public void extendedExceptionsTest() throws Exception {
         MockAerospikeClient aerospikeClientSpyed = Mockito.spy(aerospikeClient);
         doReturn(false).when(aerospikeClientSpyed)
@@ -238,6 +277,7 @@ public class MagazineTest {
                         .aerospikeClient(aerospikeClientSpyed)
                         .enableDeDupe(true)
                         .clientId("CLIENT_ID")
+                        .scope(MagazineScope.LOCAL)
                         .build())
                 .build();
         try {
@@ -305,6 +345,7 @@ public class MagazineTest {
                 .aerospikeClient(aerospikeClient)
                 .enableDeDupe(true)
                 .clientId("CLIENT_ID")
+                .scope(MagazineScope.LOCAL)
                 .build();
     }
 
