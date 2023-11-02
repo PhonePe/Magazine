@@ -81,12 +81,6 @@
             <groupId>com.phonepe.growth</groupId>
             <artifactId>distributed-lock-manager</artifactId>
             <version>${distributed-lock-manager.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

@@ -100,7 +100,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockManager.acquireLock(lock); // Exception is thrown if acquiring lock fails.
+                lockManager.tryAcquireLock(lock); // Exception is thrown if acquiring lock fails.
             }
             if (!isEnableDeDupe() || !alreadyExists(magazineIdentifier, data)) {
                 final Integer selectedShard = selectShard();
@@ -132,7 +132,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockManager.acquireLock(lock);
+                lockManager.tryAcquireLock(lock);
             }
 
             final Integer selectedShard = selectShard();
