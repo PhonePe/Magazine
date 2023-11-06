@@ -48,7 +48,6 @@ import org.apache.commons.lang3.tuple.Pair;
 public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     private static final String DEDUPER_SET_FORMAT = "%s_deduper";
-    private static final String LOCAL_SCOPE_SET_FORMAT = "%s_%s";
     private final IAerospikeClient aerospikeClient;
     private final String namespace;
     private final String dataSetName;
@@ -74,8 +73,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
         this.namespace = storageConfig.getNamespace();
-        this.dataSetName = resolveSetName(storageConfig.getDataSetName(), farmId, scope);
-        this.metaSetName = resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
+        this.dataSetName = CommonUtils.resolveSetName(storageConfig.getDataSetName(), farmId, scope);
+        this.metaSetName = CommonUtils.resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
         this.retryerFactory = new AerospikeRetryerFactory<>();
         this.activeShardsCache = initializeCache();
         this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
@@ -513,7 +512,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             T data) {
         return new Key(
                 namespace,
-                DEDUPER_SET_FORMAT.formatted(getClientId()),
+                CommonUtils.resolveSetName(DEDUPER_SET_FORMAT.formatted(getClientId()), getFarmId(), getScope()),
                 magazineIdentifier + data
         );
     }
@@ -601,24 +600,5 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .build();
         }
         return MagazineException.propagate(exception);
-    }
-
-    private static String resolveSetName(
-            final String setName,
-            final String farmId,
-            final MagazineScope scope) {
-        return scope.accept(new Visitor<>() {
-            @Override
-            public String visitLocal() {
-                return String.format(LOCAL_SCOPE_SET_FORMAT, farmId, setName);
-            }
-
-            // Default scope for backward compatibility will be global.
-            // Will support local scope backward compatibility according to client's use case if any
-            @Override
-            public String visitGlobal() {
-                return setName;
-            }
-        });
     }
 }
