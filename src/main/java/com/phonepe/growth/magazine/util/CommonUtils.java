@@ -10,6 +10,8 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class CommonUtils {
 
+    private static final String LOCAL_SCOPE_SET_FORMAT = "%s_%s";
+
     public static LockLevel resolveLockLevel(final MagazineScope scope) {
         return scope.accept(new Visitor<>() {
             @Override
@@ -31,6 +33,25 @@ public class CommonUtils {
                     .message("Global scope is not implemented.")
                     .build();
         }
+    }
+
+    public static String resolveSetName(
+            final String setName,
+            final String farmId,
+            final MagazineScope scope) {
+        return scope.accept(new Visitor<>() {
+            @Override
+            public String visitLocal() {
+                return String.format(LOCAL_SCOPE_SET_FORMAT, farmId, setName);
+            }
+
+            // Default scope for backward compatibility will be global.
+            // Will support local scope backward compatibility according to client's use case if any
+            @Override
+            public String visitGlobal() {
+                return setName;
+            }
+        });
     }
 
 }
