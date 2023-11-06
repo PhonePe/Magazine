@@ -11,11 +11,11 @@ import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.rholder.retry.RetryException;
 import com.phonepe.growth.dlm.DistributedLockManager;
-import com.phonepe.growth.dlm.exception.DLSException;
+import com.phonepe.growth.dlm.exception.DLMException;
 import com.phonepe.growth.dlm.lock.Lock;
+import com.phonepe.growth.dlm.lock.base.LockBase;
 import com.phonepe.growth.dlm.lock.level.LockLevel;
 import com.phonepe.growth.dlm.lock.mode.LockMode;
-import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeLockBase;
 import com.phonepe.growth.dlm.lock.storage.aerospike.AerospikeStore;
 import com.phonepe.growth.magazine.common.Constants;
 import com.phonepe.growth.magazine.common.MagazineData;
@@ -78,9 +78,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.retryerFactory = new AerospikeRetryerFactory<>();
         this.activeShardsCache = initializeCache();
         this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
-                AerospikeLockBase.builder()
+                LockBase.builder()
                         .mode(LockMode.EXCLUSIVE)
-                        .store(AerospikeStore.builder()
+                        .lockStore(AerospikeStore.builder()
                                 .aerospikeClient(aerospikeClient)
                                 .namespace(namespace)
                                 .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
@@ -99,7 +99,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockManager.acquire(lock); // Exception is thrown if acquiring lock fails.
+                lockManager.tryAcquireLock(lock); // Exception is thrown if acquiring lock fails.
             }
             if (!isEnableDeDupe() || !alreadyExists(magazineIdentifier, data)) {
                 final Integer selectedShard = selectShard();
@@ -118,7 +118,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
-            lockManager.release(lock);
+            lockManager.releaseLock(lock);
         }
     }
 
@@ -131,7 +131,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         try {
             // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
-                lockManager.acquire(lock);
+                lockManager.tryAcquireLock(lock);
             }
 
             final Integer selectedShard = selectShard();
@@ -145,7 +145,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
-            lockManager.release(lock);
+            lockManager.releaseLock(lock);
         }
     }
 
@@ -574,9 +574,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Lock lock) {
         if (exception instanceof MagazineException || exception.getCause() instanceof MagazineException) {
             return MagazineException.propagate(exception);
-        } else if (exception instanceof DLSException) {
+        } else if (exception instanceof DLMException) {
             if (com.phonepe.growth.dlm.exception.ErrorCode.LOCK_UNAVAILABLE
-                    .equals(((DLSException) exception).getErrorCode())) {
+                    .equals(((DLMException) exception).getErrorCode())) {
                 return MagazineException.builder()
                         .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
                         .message(String.format("Error acquiring lock - %s", (lock != null)
