@@ -1,0 +1,2 @@
+# Magazine
+Distributed persistent queue
