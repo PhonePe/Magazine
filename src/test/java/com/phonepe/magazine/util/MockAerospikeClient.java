@@ -335,27 +335,6 @@ public class MockAerospikeClient implements IAerospikeClient {
     /**
      * Check if multiple record keys exist in one batch call. The returned
      * boolean array is in positional order with the original key array order.
-     * The policy can be used to specify timeouts.
-     *
-     * @param policy generic configuration parameters, pass in null for defaults
-     * @param keys   array of unique record identifiers
-     * @return array key/existence status pairs
-     * @throws AerospikeException if command fails
-     * @deprecated Use {@link #exists(BatchPolicy, Key[])} instead.
-     */
-    @Deprecated
-    public boolean[] exists(Policy policy, Key[] keys)
-            throws AerospikeException {
-        boolean[] result = new boolean[keys.length];
-        for (int idx = 0; idx < keys.length; idx++) {
-            result[idx] = data.containsKey(keys[idx]);
-        }
-        return result;
-    }
-
-    /**
-     * Check if multiple record keys exist in one batch call. The returned
-     * boolean array is in positional order with the original key array order.
      * The policy can be used to specify timeouts and maximum concurrent
      * threads.
      *
@@ -366,7 +345,12 @@ public class MockAerospikeClient implements IAerospikeClient {
      */
     public boolean[] exists(BatchPolicy policy, Key[] keys)
             throws AerospikeException {
-        return exists((Policy) policy, keys);
+        boolean[] result = new boolean[keys.length];
+        for (int idx = 0; idx < keys.length; idx++) {
+            result[idx] = data.containsKey(keys[idx]);
+        }
+
+        return result;
     }
 
     @Override
