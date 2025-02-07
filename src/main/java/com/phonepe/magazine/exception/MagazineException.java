@@ -36,10 +36,10 @@ public class MagazineException extends RuntimeException {
     }
 
     public static MagazineException propagate(final String message, final Throwable throwable) {
-        if (throwable instanceof MagazineException) {
-            return (MagazineException) throwable;
-        } else if (throwable.getCause() instanceof MagazineException) {
-            return (MagazineException) throwable.getCause();
+        if (throwable instanceof MagazineException magazineException) {
+            return magazineException;
+        } else if (throwable.getCause() instanceof MagazineException magException) {
+            return magException;
         }
         return new MagazineException(ErrorCode.INTERNAL_ERROR, message, throwable);
     }

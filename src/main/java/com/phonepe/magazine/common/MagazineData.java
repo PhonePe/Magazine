@@ -31,6 +31,7 @@ import java.util.Objects;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MagazineData<T> {
+
     private T data;
     private long firePointer;
     private Integer shard;

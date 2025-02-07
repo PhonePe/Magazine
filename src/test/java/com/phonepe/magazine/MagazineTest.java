@@ -23,7 +23,6 @@ import static org.mockito.Mockito.doThrow;
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.github.rholder.retry.RetryException;
-import com.google.common.collect.ImmutableList;
 import com.phonepe.magazine.common.Constants;
 import com.phonepe.magazine.common.MagazineData;
 import com.phonepe.magazine.common.MetaData;
@@ -35,6 +34,7 @@ import com.phonepe.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.magazine.scope.MagazineScope;
 import com.phonepe.magazine.util.MockAerospikeClient;
 import java.security.SecureRandom;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -58,7 +58,7 @@ public class MagazineTest {
     @Before
     public void setup() throws Exception {
         magazineManager = new MagazineManager("CLIENT_ID");
-        magazineManager.refresh(ImmutableList.of(Magazine.<String>builder()
+        magazineManager.refresh(List.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build(),
@@ -231,7 +231,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void exceptionsTest() throws Exception {
+    public void exceptionsTest() {
 
         try {
             Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID1");

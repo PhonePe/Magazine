@@ -409,17 +409,17 @@ public class MockAerospikeClient implements IAerospikeClient {
      */
     public Record get(Policy policy, Key key, String... binNames)
             throws AerospikeException {
-        final Record record = data.get(key);
-        if (record == null) {
+        final Record magazineRecord = data.get(key);
+        if (magazineRecord == null) {
             return null;
         } else {
             // filter bins.
             Map<String, Object> filteredBins = new HashMap<>();
             for (String bin : binNames) {
-                filteredBins.put(bin, record.bins.get(bin));
+                filteredBins.put(bin, magazineRecord.bins.get(bin));
             }
-            return new Record(filteredBins, record.generation,
-                    record.expiration);
+            return new Record(filteredBins, magazineRecord.generation,
+                    magazineRecord.expiration);
         }
     }
 
@@ -438,12 +438,12 @@ public class MockAerospikeClient implements IAerospikeClient {
      * @throws AerospikeException if read fails
      */
     public Record getHeader(Policy policy, Key key) throws AerospikeException {
-        Record record = data.get(key);
+        Record magazineRecord = data.get(key);
 
-        if (record == null) {
+        if (magazineRecord == null) {
             return null;
         } else {
-            return new Record(null, record.generation, record.expiration);
+            return new Record(null, magazineRecord.generation, magazineRecord.expiration);
         }
 
     }
@@ -463,10 +463,9 @@ public class MockAerospikeClient implements IAerospikeClient {
      * @param keys   array of unique record identifiers
      * @return array of records
      * @throws AerospikeException if read fails
-     * @deprecated Use {@link #get(BatchPolicy, Key[])} instead.
+     * Use {@link #get(BatchPolicy, Key[])} instead.
      */
-    @Deprecated
-    public Record[] get(Policy policy, Key[] keys) throws AerospikeException {
+    private Record[] get(Policy policy, Key[] keys) throws AerospikeException {
         Record[] records = new Record[keys.length];
         for (int idx = 0; idx < records.length; idx++) {
             records[idx] = get(policy, keys[idx]);
@@ -511,10 +510,9 @@ public class MockAerospikeClient implements IAerospikeClient {
      * @param binNames array of bins to retrieve
      * @return array of records
      * @throws AerospikeException if read fails
-     * @deprecated Use {@link #get(BatchPolicy, Key[], String...)} instead.
+     * Use {@link #get(BatchPolicy, Key[], String...)} instead.
      */
-    @Deprecated
-    public Record[] get(Policy policy, Key[] keys, String... binNames)
+    private Record[] get(Policy policy, Key[] keys, String... binNames)
             throws AerospikeException {
         Record[] records = new Record[keys.length];
         for (int idx = 0; idx < records.length; idx++) {
@@ -586,10 +584,8 @@ public class MockAerospikeClient implements IAerospikeClient {
      * @param keys   array of unique record identifiers
      * @return array of records
      * @throws AerospikeException if read fails
-     * @deprecated Use {@link #getHeader(BatchPolicy, Key[])} instead.
      */
-    @Deprecated
-    public Record[] getHeader(Policy policy, Key[] keys)
+    private Record[] getHeader(Policy policy, Key[] keys)
             throws AerospikeException {
         Record[] records = new Record[keys.length];
         for (int idx = 0; idx < records.length; idx++) {
@@ -1510,10 +1506,10 @@ public class MockAerospikeClient implements IAerospikeClient {
     private Record applyOperation(Operation operation, Key key) {
         switch (operation.type) {
             case ADD:
-                Record record = data.getOrDefault(key,
+                Record magazineRecord = data.getOrDefault(key,
                         new Record(Collections.singletonMap(operation.binName, 0L), 0, 0));
-                Map<String, Object> binMap = new HashMap<>(record.bins);
-                binMap.put(operation.binName, record.getLong(operation.binName) + 1);
+                Map<String, Object> binMap = new HashMap<>(magazineRecord.bins);
+                binMap.put(operation.binName, magazineRecord.getLong(operation.binName) + 1);
                 data.put(key, new Record(binMap, 0 , 0));
             case READ:
                 return data.getOrDefault(key, new Record(Collections.singletonMap(operation.binName, 0L), 0, 0));

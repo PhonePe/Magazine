@@ -28,6 +28,7 @@ import javax.validation.constraints.NotBlank;
 @AllArgsConstructor
 @NoArgsConstructor
 public class AerospikeStorageConfig {
+
     @NotBlank
     private String namespace;
     @NotBlank
@@ -42,5 +43,5 @@ public class AerospikeStorageConfig {
     private int shards = 64; //Default 64 shards in a magazine
     @Min(-2)
     @Builder.Default
-    private int metaDataTtl = 2 * 30 *24 * 60 * 60; // 2 months default TTL
+    private int metaDataTtl = 2 * 30 * 24 * 60 * 60; // 2 months default TTL
 }

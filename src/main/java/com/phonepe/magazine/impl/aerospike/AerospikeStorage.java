@@ -322,7 +322,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Integer selectedShard)
             throws ExecutionException,
             RetryException {
-        final Record record = (Record) retryerFactory.getRetryer()
+        final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -335,13 +335,13 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.LOAD_POINTER));
                 });
 
-        if (record == null) {
+        if (magazineRecord == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_POINTERS, magazineIdentifier))
                     .build();
         }
-        return record.getLong(Constants.LOAD_POINTER);
+        return magazineRecord.getLong(Constants.LOAD_POINTER);
     }
 
     private Record incrementAndGetFirePointer(final String magazineIdentifier,
@@ -365,7 +365,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private void incrementLoadCounter(final String magazineIdentifier,
             final Integer selectedShard)
             throws ExecutionException, RetryException {
-        final Record record = (Record) retryerFactory.getRetryer()
+        final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -378,7 +378,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.LOAD_COUNTER));
                 });
 
-        if (record == null) {
+        if (magazineRecord == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -389,7 +389,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private void incrementFireCounter(final String magazineIdentifier,
             final Integer shard) throws ExecutionException,
             RetryException {
-        final Record record = (Record) retryerFactory.getRetryer()
+        final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -402,7 +402,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.FIRE_COUNTER));
                 });
 
-        if (record == null) {
+        if (magazineRecord == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -414,7 +414,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Integer selectedShard)
             throws ExecutionException,
             RetryException {
-        final Record record = (Record) retryerFactory.getRetryer()
+        final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
@@ -427,7 +427,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.FIRE_COUNTER));
                 });
 
-        if (record == null) {
+        if (magazineRecord == null) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -588,9 +588,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Lock lock) {
         if (exception instanceof MagazineException || exception.getCause() instanceof MagazineException) {
             return MagazineException.propagate(exception);
-        } else if (exception instanceof DLMException) {
+        } else if (exception instanceof DLMException dlmException) {
             if (com.phonepe.dlm.exception.ErrorCode.LOCK_UNAVAILABLE
-                    .equals(((DLMException) exception).getErrorCode())) {
+                    .equals(dlmException.getErrorCode())) {
                 return MagazineException.builder()
                         .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
                         .message(String.format("Error acquiring lock - %s", (lock != null)

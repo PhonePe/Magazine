@@ -20,6 +20,24 @@
 
     <developers>
         <developer>
+            <id>MISBMS</id>
+            <name>Mohammed Irfanulla S</name>
+            <email>mohammed.irfanulla.s1@gmail.com</email>
+            <roles>
+                <role>owner</role>
+                <role>developer</role>
+            </roles>
+        </developer>
+        <developer>
+            <id>tshan10</id>
+            <name>Shantanu Tiwari</name>
+            <email>tshantanu510@gmail.com</email>
+            <roles>
+                <role>owner</role>
+                <role>developer</role>
+            </roles>
+        </developer>
+        <developer>
             <id>NikhilJoshi28</id>
             <name>Nikhil Joshi</name>
             <email>nikhiljoshi1nikhil@gmail.com</email>

@@ -15,7 +15,6 @@
  */
 package com.phonepe.magazine.common;
 
-import com.google.common.collect.ImmutableSet;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -48,7 +47,7 @@ public class Constants {
     public static final int MIN_SHARDS = 1;
     public static final int SHARDS_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
 
-    public static final Set<Class<?>> DEDUPABLE_CLASSES = ImmutableSet.of(
+    public static final Set<Class<?>> DEDUPABLE_CLASSES = Set.of(
             String.class,
             Long.class,
             Integer.class

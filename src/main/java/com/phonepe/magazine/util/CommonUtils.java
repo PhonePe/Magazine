@@ -26,7 +26,7 @@ public class CommonUtils {
         });
     }
 
-    public static <T> void validateMagazineScope(final MagazineScope scope) {
+    public static void validateMagazineScope(final MagazineScope scope) {
         if (scope == MagazineScope.GLOBAL) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.NOT_IMPLEMENTED)

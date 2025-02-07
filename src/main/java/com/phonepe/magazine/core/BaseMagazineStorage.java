@@ -40,7 +40,7 @@ public abstract class BaseMagazineStorage<T> {
     private final String clientId;
     private final MagazineScope scope;
 
-    public BaseMagazineStorage(
+    protected BaseMagazineStorage(
             final StorageType type,
             final int recordTtl,
             final int metaDataTtl,

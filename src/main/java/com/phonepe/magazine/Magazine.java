@@ -81,7 +81,7 @@ public class Magazine<T> {
                     public Boolean visitAerospike() throws ExecutionException, RetryException {
                         final AerospikeStorage storage = (AerospikeStorage) baseMagazineStorage;
 
-                        final Record record = (Record) storage.getRetryerFactory()
+                        final Record magazineRecord = (Record) storage.getRetryerFactory()
                                 .getRetryer()
                                 .call(() ->
                                         storage.getAerospikeClient()
@@ -92,7 +92,7 @@ public class Magazine<T> {
                                                                 String.join(Constants.KEY_DELIMITER, magazineIdentifier,
                                                                         Constants.SHARDS_BIN))));
 
-                        if (record == null) {
+                        if (magazineRecord == null) {
                             final WritePolicy writePolicy = storage.getAerospikeClient()
                                     .getWritePolicyDefault();
                             writePolicy.expiration = Constants.SHARDS_DEFAULT_TTL;
@@ -111,7 +111,7 @@ public class Magazine<T> {
                             return true;
                         }
 
-                        final int storedShards = record.getInt(Constants.SHARDS_BIN);
+                        final int storedShards = magazineRecord.getInt(Constants.SHARDS_BIN);
                         if (storedShards > storage.getShards()) {
                             throw MagazineException.builder()
                                     .errorCode(ErrorCode.INVALID_SHARDS)

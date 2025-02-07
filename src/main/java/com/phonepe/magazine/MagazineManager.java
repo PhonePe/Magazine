@@ -26,6 +26,7 @@ import java.util.Objects;
 
 @Data
 public class MagazineManager {
+
     private final String clientId;
     private final Map<String, Magazine<?>> magazineMap = new HashMap<>();
 
@@ -39,7 +40,7 @@ public class MagazineManager {
 
     @SuppressWarnings("unchecked")
     public <T> Magazine<T> getMagazine(final String magazineIdentifier) {
-        Magazine<T> magazine =  (Magazine<T>) (magazineMap.get(magazineIdentifier));
+        Magazine<T> magazine = (Magazine<T>) (magazineMap.get(magazineIdentifier));
         if (Objects.isNull(magazine)) {
             throw MagazineException.builder()
                     .message(String.format("Magazine not found for identifier %s", magazineIdentifier))

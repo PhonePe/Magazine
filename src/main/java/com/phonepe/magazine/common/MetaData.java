@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MetaData {
+
     private long fireCounter;
     private long loadCounter;
     private long firePointer;

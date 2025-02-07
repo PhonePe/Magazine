@@ -28,6 +28,7 @@ import lombok.Getter;
 
 @Getter
 public class AerospikeRetryerFactory<T> {
+
     private final Retryer<T> retryer;
     private final Retryer<Object> fireRetryer;
 
