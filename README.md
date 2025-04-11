@@ -12,7 +12,7 @@ Beyond the fundamental capabilities of loading, reloading, and on-demand data re
 <dependency>
     <groupId>com.phonepe</groupId>
     <artifactId>magazine</artifactId>
-    <version>1.1.7</version>
+    <version>1.0.0</version>
 </dependency>
 
 ```

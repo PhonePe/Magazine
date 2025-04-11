@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.phonepe.magazine.common;
 
 import lombok.AllArgsConstructor;
@@ -22,10 +23,6 @@ import lombok.NoArgsConstructor;
 
 import java.util.Objects;
 
-/**
- * @author shantanu.tiwari
- * Created on 12/03/22
- */
 @Data
 @Builder
 @NoArgsConstructor

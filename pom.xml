@@ -7,7 +7,7 @@
 
     <url>https://github.com/PhonePe/magazine</url>
     <description>Distributed Persistent Queue</description>
-    <inceptionYear>2020</inceptionYear>
+    <inceptionYear>2025</inceptionYear>
 
     <licenses>
         <license>
@@ -88,13 +88,16 @@
         <lombok.version>1.18.22</lombok.version>
         <jackson.version>2.13.0</jackson.version>
         <mockito.version>4.3.1</mockito.version>
-
+        <apache.commons.version>3.11</apache.commons.version>
+        <guava.retrying.version>2.0.0</guava.retrying.version>
+        <hibernate.validator.version>6.1.7.Final</hibernate.validator.version>
+        <junit.version>4.12</junit.version>
         <DLM.version>1.0.0</DLM.version>
         <caffeine.version>2.7.0</caffeine.version>
         <aerospike.version>6.1.7</aerospike.version>
 
         <!-- Sonar properties -->
-        <sonar.projectKey>PhonePe_Magazine</sonar.projectKey>
+        <sonar.projectKey>PhonePe_magazine</sonar.projectKey>
         <sonar.organization>phonepe</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.sources>src/main</sonar.sources>
@@ -133,12 +136,12 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-            <version>3.11</version>
+            <version>${apache.commons.version}</version>
         </dependency>
         <dependency>
             <groupId>com.github.rholder</groupId>
             <artifactId>guava-retrying</artifactId>
-            <version>2.0.0</version>
+            <version>${guava.retrying.version}</version>
         </dependency>
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
@@ -148,7 +151,7 @@
         <dependency>
             <groupId>org.hibernate.validator</groupId>
             <artifactId>hibernate-validator</artifactId>
-            <version>6.1.7.Final</version>
+            <version>${hibernate.validator.version}</version>
         </dependency>
         <dependency>
             <groupId>com.phonepe</groupId>
@@ -158,7 +161,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.12</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
