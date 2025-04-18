@@ -49,26 +49,60 @@ public class Magazine<T> {
         validateStorage(baseMagazineStorage);
     }
 
+    /**
+     * Load data into the specified magazine.
+     *
+     * @param data The data to be loaded.
+     * @return True if the data was successfully loaded, false otherwise.
+     */
     public boolean load(final T data) {
         return baseMagazineStorage.load(magazineIdentifier, data);
     }
 
+    /**
+     * Reload data into the specified magazine. This won't increase the load counter as the data was already loaded,
+     * but load pointer will be incremented as the data will appended at the end.
+     *
+     * @param data The data to be reloaded.
+     * @return True if the data was successfully reloaded, false otherwise.
+     */
     public boolean reload(final T data) {
         return baseMagazineStorage.reload(magazineIdentifier, data);
     }
 
+    /**
+     * Fire and retrieve data from the specified magazine.
+     *
+     * @return The MagazineData containing the fired data.
+     */
     public MagazineData<T> fire() {
         return baseMagazineStorage.fire(magazineIdentifier);
     }
 
+    /**
+     * Delete the provided MagazineData from the magazine.
+     *
+     * @param magazineData The MagazineData to be deleted.
+     */
     public void delete(final MagazineData<T> magazineData) {
         baseMagazineStorage.delete(magazineData);
     }
 
+    /**
+     * Retrieve metadata of the specified magazine i.e the number of loaded or fired, pointers and counters.
+     *
+     * @return A map containing metadata information.
+     */
     public Map<String, MetaData> getMetaData() {
         return baseMagazineStorage.getMetaData(magazineIdentifier);
     }
 
+    /**
+     * Peek data from specific shards and pointers within the magazine.
+     *
+     * @param shardPointersMap A map where keys are shard identifiers and values are sets of pointers to peek from.
+     * @return A set of MagazineData containing the peeked data.
+     */
     public Set<MagazineData<T>> peek(final Map<Integer, Set<Long>> shardPointersMap) {
         return baseMagazineStorage.peek(magazineIdentifier, shardPointersMap);
     }

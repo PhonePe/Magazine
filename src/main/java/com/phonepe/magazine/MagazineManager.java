@@ -35,10 +35,22 @@ public class MagazineManager {
         this.clientId = clientId;
     }
 
+    /**
+     * rebuilds magazineMap wrt the list of magazines provided
+     *
+     * @param magazines
+     */
     public void refresh(final List<Magazine<?>> magazines) {
         magazines.forEach(magazine -> magazineMap.put(magazine.getMagazineIdentifier(), magazine));
     }
 
+    /**
+     *  function provides magazine corresponding to magazine identifier
+     *
+     * @param magazineIdentifier
+     * @return magazine corresponding to provided magazineIdentifier
+     * @param <T>
+     */
     @SuppressWarnings("unchecked")
     public <T> Magazine<T> getMagazine(final String magazineIdentifier) {
         Magazine<T> magazine = (Magazine<T>) (magazineMap.get(magazineIdentifier));
