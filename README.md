@@ -75,4 +75,5 @@ Method to delete the provided MagazineData from the magazine.
 Method is used to Peek data from specific shards and pointers within the magazine. It accepts magazine identifiers as string
 and a map where keys are shard identifiers and values are sets of pointers to peek from
 
-![magazine](https://github.com/user-attachments/assets/34a2ebe7-a746-40fa-9d46-bef07eaba4ea)
+![magazine](https://github.com/user-attachments/assets/e758d54f-c61f-4b54-bc6f-431ae502258a)
+
