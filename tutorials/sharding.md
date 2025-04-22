@@ -68,7 +68,7 @@ AerospikeStorage<String> emailStorage = AerospikeStorage.<String>builder()
     // ... other config like enableDeDupe, clazz, clientId ...
     .build();
 
-System.out.println("AerospikeStorage configured with " + emailStorage.getShards() + " shards."); 
+log.info("AerospikeStorage configured with " + emailStorage.getShards() + " shards."); 
 
 // Now, create the Magazine using this storage strategy
 // Magazine<String> emailMagazine = new Magazine<>("welcome-email-queue", emailStorage);
