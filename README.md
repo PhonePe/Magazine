@@ -14,6 +14,25 @@ Beyond the fundamental capabilities of loading, reloading, and on-demand data re
 - Magazine Management: Facilitates the management of multiple magazines, potentially holding different data types.
 - Reloading Data: Offers the ability to reload data into a magazine, especially if it was previously "fired."
 
+## Tutorials 
+
+## Chapters
+
+1. [Magazine
+   ](tutorials/magazine.md)
+2. [MagazineData
+   ](tutorials/magazinedata.md)
+3. [MagazineManager
+   ](tutorials/magazinemanager.md)
+4. [BaseMagazineStorage / Storage Strategy
+   ](tutorials/base_magazine_storage__storage_strategy.md)
+5. [MetaData (Pointers & Counters)
+   ](tutorials/metadata_pointers_counters.md)
+6. [Concurrency Control & Deduplication
+   ](tutorials/concurrency_control__deduplication.md)
+7. [Sharding
+   ](tutorials/sharding.md)
+
 ## Usage
 
 #### Add Maven Dependency
@@ -83,5 +102,31 @@ Method to delete the provided MagazineData from the magazine.
 Method is used to Peek data from specific shards and pointers within the magazine. It accepts magazine identifiers as string
 and a map where keys are shard identifiers and values are sets of pointers to peek from
 
+
+## Architecture
+
 ![magazine](https://github.com/user-attachments/assets/e758d54f-c61f-4b54-bc6f-431ae502258a)
 
+```mermaid
+flowchart TD
+    A0["Magazine
+"]
+    A1["MagazineManager
+"]
+    A2["BaseMagazineStorage / Storage Strategy
+"]
+    A3["MagazineData
+"]
+    A4["MetaData (Pointers & Counters)
+"]
+    A5["Sharding
+"]
+    A6["Concurrency Control & Deduplication
+"]
+    A1 -- "Manages instances of" --> A0
+    A0 -- "Delegates operations to" --> A2
+    A2 -- "Returns/Accepts" --> A3
+    A2 -- "Manages state using" --> A4
+    A2 -- "Implements strategy" --> A5
+    A2 -- "Implements strategy" --> A6
+```
