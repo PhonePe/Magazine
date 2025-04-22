@@ -106,7 +106,7 @@ System.out.println("AerospikeStorage configured with " + emailStorage.getShards(
         Integer shardId = firedInfo.getShard(); // Get the shard ID (e.g., 0, 1, ..., 63)
         long pointer = firedInfo.getFirePointer(); // Pointer within that shard
 
-        System.out.println("Fired '" + email + "' from Shard: " + shardId + " at position " + pointer);
+        log.info("Fired '" + email + "' from Shard: " + shardId + " at position " + pointer);
     }
     ```
 

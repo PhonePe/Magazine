@@ -1,10 +1,10 @@
 # Chapter 2: MagazineData - Knowing What You Fired
 
-In the [previous chapter](magazine.md), we learned about the `Magazine` concept – a container for temporary data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our email example?
+In the [previous chapter](magazine.md), we saw about the `Magazine` concept – a container for temporary data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our email example?
 
 ```java
 // From Chapter 1: Firing an email address
-MagazineData<String> firedData = magazineManager.getMagazine(magazineId, dataType).fire();
+MagazineData<String> firedData = magazineManager.getMagazine(magazineId).fire();
 String emailToSend = firedData.getData(); // We got the email!
 ```
 
@@ -46,11 +46,10 @@ Let's revisit our `fire` example and see what we can do with the `MagazineData` 
 ```java
 // Assume magazineManager, magazineId, dataType are set up as before
 String magazineId = "welcome-email-queue";
-Class<String> dataType = String.class;
 
 try {
   // Fire one item
-  MagazineData<String> firedInfo = magazineManager.getMagazine(magazineId, dataType).fire();
+  MagazineData<String> firedInfo = magazineManager.getMagazine(magazineId).fire();
 
   // Access the components of MagazineData
   String emailToSend = firedInfo.getData();             // The actual email
@@ -58,27 +57,27 @@ try {
   Integer shardId = firedInfo.getShard();              // Which shard (if any)
   String originMagazine = firedInfo.getMagazineIdentifier(); // Should be "welcome-email-queue"
 
-  System.out.println("Fired item #" + sequenceNumber + " from magazine '" + originMagazine + "' (Shard: " + shardId + ")");
-  System.out.println("Data: " + emailToSend);
+  log.info("Fired item #" + sequenceNumber + " from magazine '" + originMagazine + "' (Shard: " + shardId + ")");
+  log.info("Data: " + emailToSend);
 
   // --- Try processing (e.g., sending email) ---
   boolean success = sendEmail(emailToSend); // Assume this function exists
 
   if (success) {
-    System.out.println("Successfully processed item #" + sequenceNumber);
+    log.info("Successfully processed item #" + sequenceNumber);
     // IMPORTANT: Delete the item after successful processing
-    // magazineManager.getMagazine(magazineId, dataType).delete(firedInfo); 
+    // magazineManager.getMagazine(magazineId).delete(firedInfo); 
     // We'll cover delete properly later!
   } else {
-    System.err.println("Failed to process item #" + sequenceNumber + " from magazine '" + originMagazine + "'");
+    log.info("Failed to process item #" + sequenceNumber + " from magazine '" + originMagazine + "'");
     // Maybe reload it? Or log it for manual review?
-    // magazineManager.getMagazine(magazineId, dataType).reload(emailToSend); 
+    // magazineManager.getMagazine(magazineId).reload(emailToSend); 
   }
 
 } catch (NoSuchElementException e) {
-  System.out.println("Magazine is empty. No items to fire.");
+  log.error("Magazine is empty. No items to fire.");
 } catch (Exception e) {
-  System.err.println("An error occurred during firing or processing: " + e.getMessage());
+  log.error("An error occurred during firing or processing: " + e.getMessage());
 }
 ```
 
@@ -204,7 +203,7 @@ You can see an example of how `MagazineData` is created within the `fireWithRetr
 
 ## Conclusion
 
-You've now learned that when you `fire` an item from a `Magazine`, you get back more than just the data. You receive a `MagazineData` object, which bundles the data with important context: its `firePointer` (sequence number), its originating `shard` (if sharding is used), and the `magazineIdentifier`. This metadata is crucial for robust processing, logging, and debugging.
+Module describes that when you `fire` an item from a `Magazine`, you get back more than just the data. You receive a `MagazineData` object, which bundles the data with important context: its `firePointer` (sequence number), its originating `shard` (if sharding is used), and the `magazineIdentifier`. This metadata is crucial for robust processing, logging, and debugging.
 
 So far, we've seen how to interact with a *single* `Magazine`. But what if your application needs multiple magazines for different kinds of temporary data (e.g., one for emails, one for image processing tasks, one for user notifications)? How do you manage all of them? That's where the `MagazineManager` comes in.
 

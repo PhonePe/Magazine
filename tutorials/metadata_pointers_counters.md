@@ -72,11 +72,10 @@ You can ask a `Magazine` for its current metadata using the `getMetaData()` meth
 // Assume magazineManager is set up, and we have our email magazine
 MagazineManager magazineManager = /* ... */;
 String magazineId = "welcome-email-queue";
-Class<String> dataType = String.class;
 
 try {
     // Get the magazine
-    Magazine<String> emailMagazine = magazineManager.getMagazine(magazineId, dataType);
+    Magazine<String> emailMagazine = magazineManager.getMagazine(magazineId);
 
     // Get its metadata
     Map<String, MetaData> metadataMap = emailMagazine.getMetaData();
@@ -87,16 +86,16 @@ try {
         String shardKey = entry.getKey(); // Identifier for the shard/partition
         MetaData meta = entry.getValue(); // The MetaData object for that shard
 
-        System.out.println("  Shard/Partition: " + shardKey);
-        System.out.println("    Load Pointer : " + meta.getLoadPointer());
-        System.out.println("    Fire Pointer : " + meta.getFirePointer());
-        System.out.println("    Load Counter : " + meta.getLoadCounter());
-        System.out.println("    Fire Counter : " + meta.getFireCounter());
-        System.out.println("    Items Pending: " + (meta.getLoadPointer() - meta.getFirePointer())); // Approximate
+        log.info("  Shard/Partition: " + shardKey);
+        log.info("    Load Pointer : " + meta.getLoadPointer());
+        log.info("    Fire Pointer : " + meta.getFirePointer());
+        log.info("    Load Counter : " + meta.getLoadCounter());
+        log.info("    Fire Counter : " + meta.getFireCounter());
+        log.info("    Items Pending: " + (meta.getLoadPointer() - meta.getFirePointer())); // Approximate
     }
 
 } catch (Exception e) {
-    System.err.println("Error getting metadata: " + e.getMessage());
+    log.error("Error getting metadata: " + e.getMessage());
 }
 ```
 

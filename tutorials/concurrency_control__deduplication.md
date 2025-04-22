@@ -28,7 +28,7 @@ When multiple processes try to modify the same resource (like updating the `load
 
 In the `magazine` library, this is primarily achieved using **locking**. Before performing a sensitive operation (like loading with deduplication enabled), the system tries to acquire a "lock".
 
-### 2. DistributedLockManager (DLM): The Master Key Holder
+### 2. DistributedLockManager [[DLM]](https://github.com/PhonePe/DLM): The Master Key Holder
 
 Since your application might be running across multiple servers (a distributed system), a simple lock within one server isn't enough. We need a way to coordinate across all servers. This is where a **Distributed Lock Manager (DLM)** comes in.
 
@@ -90,7 +90,7 @@ AerospikeStorage<String> emailStorage = AerospikeStorage.<String>builder()
     .scope(MagazineScope.GLOBAL) // Scope of the magazine
     .build();
 
-System.out.println("AerospikeStorage created with Deduplication: " + emailStorage.isEnableDeDupe()); 
+log.info("AerospikeStorage created with Deduplication: " + emailStorage.isEnableDeDupe()); 
 
 // Now, when you create a Magazine using this storage, deduplication will be active.
 // Magazine<String> emailMagazine = new Magazine<>("welcome-email-queue", emailStorage); 
@@ -111,11 +111,11 @@ Magazine<String> emailMagazine = /* ... created with emailStorage ... */;
 
 // First time loading this email
 boolean loaded1 = emailMagazine.load("duplicate.test@example.com"); 
-System.out.println("First load attempt: " + loaded1); // Output: First load attempt: true
+log.info("First load attempt: " + loaded1); // Output: First load attempt: true
 
 // Try loading the exact same email again
 boolean loaded2 = emailMagazine.load("duplicate.test@example.com"); 
-System.out.println("Second load attempt: " + loaded2); // Output: Second load attempt: true 
+log.info("Second load attempt: " + loaded2); // Output: Second load attempt: true 
 ```
 
 **Explanation:**
@@ -176,7 +176,7 @@ public boolean load(final String magazineIdentifier, final T data) {
         if (isEnableDeDupe()) {
             // Attempt to acquire the distributed lock. Fails if unavailable.
             lockManager.tryAcquireLock(lock); 
-            System.out.println("DEBUG: Acquired lock for: " + lock.getLockId());
+            log.debug("DEBUG: Acquired lock for: " + lock.getLockId());
         }
 
         // --- Deduplication Check ---
@@ -184,7 +184,7 @@ public boolean load(final String magazineIdentifier, final T data) {
         boolean proceedToLoad = !isEnableDeDupe() || !alreadyExists(magazineIdentifier, data);
         
         if (proceedToLoad) {
-            System.out.println("DEBUG: Item does not exist (or dedupe off). Proceeding to load.");
+            log.debug("DEBUG: Item does not exist (or dedupe off). Proceeding to load.");
             // --- Actual Loading Logic ---
             final Integer selectedShard = selectShard(); // Choose a partition
             // Get next position, increments pointer atomically
@@ -203,12 +203,12 @@ public boolean load(final String magazineIdentifier, final T data) {
             if (isEnableDeDupe()) {
                  // Add an entry to the deduper set to mark this data as seen
                 storeDataForDeDupe(magazineIdentifier, data);
-                System.out.println("DEBUG: Stored dedupe entry for: " + data.toString());
+                log.debug("DEBUG: Stored dedupe entry for: " + data.toString());
             }
             return success; // Return true if data write was successful
         } else {
              // Item already exists (and dedupe is enabled)
-             System.out.println("DEBUG: Item already exists. Skipping load. Returning true.");
+             log.debug("DEBUG: Item already exists. Skipping load. Returning true.");
              return true; // Indicate success as the item is effectively 'loaded'
         }
     } catch (Exception e) {
@@ -219,7 +219,7 @@ public boolean load(final String magazineIdentifier, final T data) {
         // ALWAYS release the lock in a finally block to prevent deadlocks
         // This call is safe even if the lock wasn't acquired (e.g., if dedupe is off)
         lockManager.releaseLock(lock); 
-        System.out.println("DEBUG: Released lock (if held) for: " + (lock != null ? lock.getLockId() : "null"));
+        log.debug("DEBUG: Released lock (if held) for: " + (lock != null ? lock.getLockId() : "null"));
     }
 }
 
@@ -229,7 +229,7 @@ private boolean alreadyExists(final String magazineIdentifier, final T data) {
     Key deduperKey = buildDeDuperKey(magazineIdentifier, data); 
     // Checks if this key exists in the dedicated deduper Aerospike set
     boolean exists = aerospikeClient.exists(null, deduperKey); 
-    System.out.println("DEBUG: Checking existence for " + deduperKey.userKey + ": " + exists);
+    log.debug("DEBUG: Checking existence for " + deduperKey.userKey + ": " + exists);
     return exists;
     // Real implementation includes retry logic
 }

@@ -85,7 +85,7 @@ try {
   // Now, try sending the email...
   // sendEmail(emailToSend); 
 
-  // Important: After successfully processing, delete the item
+  // Important: After successfully processing we can delete the item
   // magazineManager.getMagazine(magazineId, dataType).delete(firedData);
 
 } catch (NoSuchElementException e) {
@@ -102,7 +102,7 @@ try {
 1.  We again get our specific magazine using `magazineManager.getMagazine(...)`.
 2.  We call the `.fire()` method. This tries to retrieve the oldest available item.
 3.  If successful, `fire()` returns a [MagazineData](magazinedata.md) object. This object wraps our actual data (the email address) along with some extra information we'll discuss in the next chapter. We get the email using `firedData.getData()`.
-4.  If the magazine is empty, `fire()` might throw an exception (like `NoSuchElementException` depending on the underlying storage), so we need a `try-catch` block.
+4.  If the magazine is empty, `fire()` might throw an exception (like `NoSuchElementException` depending on the underlying storage).
 5.  **Crucially**, after you successfully process the fired item (e.g., after the email is sent), you usually need to explicitly `delete` it from the storage. We'll cover `delete` more later, but it ensures the item isn't processed again accidentally.
 
 ### Reloading Data
@@ -111,20 +111,19 @@ What if sending the email failed temporarily (e.g., the email server was down)? 
 
 ```java
 // Assume magazineManager is available
-// String magazineId = "welcome-email-queue";
-// Class<String> dataType = String.class;
+// String magazineId = "welcome-email-queue";=
 // String emailToReload = "faileduser@example.com"; // From a previous failed attempt
 
 try {
   // Get the magazine and reload the data
-  boolean reloaded = magazineManager.getMagazine(magazineId, dataType).reload(emailToReload);
+  boolean reloaded = magazineManager.getMagazine(magazineId).reload(emailToReload);
   if (reloaded) {
-    System.out.println("Successfully reloaded email: " + emailToReload);
+    log.info("Successfully reloaded email: " + emailToReload);
   } else {
-    System.out.println("Failed to reload email: " + emailToReload);
+    log.info("Failed to reload email: " + emailToReload);
   }
 } catch (Exception e) {
-  System.err.println("Error reloading data: " + e.getMessage());
+  log.error("Error reloading data: " + e.getMessage());
   // Handle potential errors
 }
 ```
@@ -167,7 +166,7 @@ Let's look at the `load` method inside the `Magazine.java` code:
 
 public class Magazine<T> {
 
-    private final BaseMagazineStorage<T> baseMagazineStorage; // The storage strategy
+    private final AerospikeStorage<T> aerospikeStorage; // The storage strategy
     private final String magazineIdentifier;                  // The unique name
 
     // Constructor sets these up...
@@ -177,7 +176,7 @@ public class Magazine<T> {
      */
     public boolean load(final T data) {
         // Simply pass the call to the storage object!
-        return baseMagazineStorage.load(magazineIdentifier, data); 
+        return aerospikeStorage.load(magazineIdentifier, data); 
     }
 
     // ... other methods like fire(), reload() also delegate ...
@@ -190,7 +189,7 @@ This design makes the `Magazine` class itself quite straightforward, while the c
 
 ## Conclusion
 
-You've now learned about the core concept of a `Magazine`: a container for temporary, homogeneous data items, identified by a unique name. You saw how to use the basic operations (`load`, `fire`, `reload`) through the `MagazineManager` to add data, retrieve it (usually FIFO), and put it back if needed. You also got a glimpse under the hood, understanding that the `Magazine` object delegates the hard work of persistence to an underlying storage strategy.
+Module defines the core concept of a `Magazine`: a container for temporary, homogeneous data items, identified by a unique name. You saw how to use the basic operations (`load`, `fire`, `reload`) through the `MagazineManager` to add data, retrieve it (usually FIFO), and put it back if needed. You also got a glimpse under the hood, understanding that the `Magazine` object delegates the hard work of persistence to an underlying storage strategy.
 
 In the next chapter, we'll look closer at the `MagazineData` object that gets returned when you `fire` an item. It contains more than just your raw data!
 

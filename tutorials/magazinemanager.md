@@ -1,6 +1,6 @@
 # Chapter 3: MagazineManager - Your Central Magazine Rack
 
-In the previous chapters, we learned about the [Magazine](magazine.md) – a container for temporary data items like bullets in a rifle magazine – and [MagazineData](magazinedata.md) – the object you get back when you `fire` an item, which includes the data plus extra context.
+In the previous chapters, we saw about the [Magazine](magazine.md) – a container for temporary data items like bullets in a rifle magazine – and [MagazineData](magazinedata.md) – the object you get back when you `fire` an item, which includes the data plus extra context.
 
 So far, we've focused on using a *single* magazine, like our `"welcome-email-queue"`. But what if your application needs to handle *multiple* kinds of temporary data?
 
@@ -49,7 +49,7 @@ String myAppClientId = "order-processing-service-instance-1";
 // Create the manager
 MagazineManager magazineManager = new MagazineManager(myAppClientId);
 
-System.out.println("MagazineManager created for client: " + magazineManager.getClientId()); 
+log.info("MagazineManager created for client: " + magazineManager.getClientId()); 
 ```
 
 **Explanation:**
@@ -80,7 +80,7 @@ List<Magazine<?>> allMyMagazines = new ArrayList<>();
 allMyMagazines.add(emailMagazine);
 allMyMagazines.add(securityCheckMagazine);
 
-System.out.println("Prepared a list of " + allMyMagazines.size() + " magazines.");
+log.info("Prepared a list of " + allMyMagazines.size() + " magazines.");
 ```
 
 **Explanation:**
@@ -97,7 +97,7 @@ Now, we need to tell the `MagazineManager` about the magazines we prepared. We d
 // Tell the manager about our magazines
 magazineManager.refresh(allMyMagazines);
 
-System.out.println("MagazineManager refreshed. It now knows about our magazines.");
+log.info("MagazineManager refreshed. It now knows about our magazines.");
 ```
 
 **Explanation:**
@@ -120,24 +120,24 @@ try {
     
     // Now use it just like in Chapter 1!
     welcomeEmailMag.load("newbie@example.com");
-    System.out.println("Loaded email via manager.");
+    log.info("Loaded email via manager.");
 
     // Get the magazine for security checks (we know it holds Integers)
     Magazine<Integer> securityCheckMag = magazineManager.getMagazine(securityQueueId);
     
     // Use it
     securityCheckMag.load(12345); // Load user ID 12345
-    System.out.println("Loaded user ID via manager.");
+    log.info("Loaded user ID via manager.");
 
     // Try to get a magazine that doesn't exist
     // Magazine<Double> nonExistentMag = magazineManager.getMagazine("unknown-queue"); 
 
 } catch (MagazineException e) {
     // Handle the case where the magazine identifier is not found
-    System.err.println("Error getting magazine: " + e.getMessage()); 
+    log.error("Error getting magazine: " + e.getMessage()); 
 } catch (Exception e) {
     // Handle other potential errors (like ClassCastException, see below)
-    System.err.println("An unexpected error occurred: " + e.getMessage());
+    log.error("An unexpected error occurred: " + e.getMessage());
 }
 ```
 
@@ -241,7 +241,7 @@ public class MagazineManager {
 
 ## Conclusion
 
-You've now learned about the `MagazineManager`, the central coordinator for handling multiple `Magazine` instances in your application. It acts like a librarian or a rack, allowing you to easily register (`refresh`) and retrieve (`getMagazine`) specific magazines using their unique identifiers. This keeps your code organized when dealing with various types of temporary data queues.
+Module is about the `MagazineManager`, the central coordinator for handling multiple `Magazine` instances in your application. It acts like a librarian or a rack, allowing you to easily register (`refresh`) and retrieve (`getMagazine`) specific magazines using their unique identifiers. This keeps your code organized when dealing with various types of temporary data queues.
 
 We briefly mentioned that creating a `Magazine` involves specifying an underlying storage mechanism. But how does the data actually get saved reliably? How does the `Magazine` interact with storage like memory, files, or databases? That's the topic of our next chapter!
 
