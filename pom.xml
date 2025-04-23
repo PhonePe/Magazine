@@ -38,6 +38,14 @@
             </roles>
         </developer>
         <developer>
+            <id>nishgpt</id>
+            <name>Nishant Gupta</name>
+            <email>nishant141077@gmail.com</email>
+            <roles>
+                <role>developer</role>
+            </roles>
+        </developer>
+        <developer>
             <id>NikhilJoshi28</id>
             <name>Nikhil Joshi</name>
             <email>nikhiljoshi1nikhil@gmail.com</email>
