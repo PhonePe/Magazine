@@ -1,8 +1,8 @@
 # Chapter 3: MagazineManager - Your Central Magazine Rack
 
-In the previous chapters, we saw about the [Magazine](magazine.md) – a container for temporary data items like bullets in a rifle magazine – and [MagazineData](magazinedata.md) – the object you get back when you `fire` an item, which includes the data plus extra context.
+In the previous chapters, we saw about the [Magazine](magazine.md) – a container for homogeneous data items like bullets in a rifle magazine – and [MagazineData](magazinedata.md) – the object you get back when you `fire` an item, which includes the data plus extra context.
 
-So far, we've focused on using a *single* magazine, like our `"welcome-email-queue"`. But what if your application needs to handle *multiple* kinds of temporary data?
+So far, we've focused on using a *single* magazine, like our `"welcome-email-queue"`. But what if your application needs to handle *multiple* kinds of data?
 
 ## The Problem: Juggling Many Magazines
 
@@ -241,7 +241,7 @@ public class MagazineManager {
 
 ## Conclusion
 
-Module is about the `MagazineManager`, the central coordinator for handling multiple `Magazine` instances in your application. It acts like a librarian or a rack, allowing you to easily register (`refresh`) and retrieve (`getMagazine`) specific magazines using their unique identifiers. This keeps your code organized when dealing with various types of temporary data queues.
+Module is about the `MagazineManager`, the central coordinator for handling multiple `Magazine` instances in your application. It acts like a librarian or a rack, allowing you to easily register (`refresh`) and retrieve (`getMagazine`) specific magazines using their unique identifiers. This keeps your code organized when dealing with various types of data queues.
 
 We briefly mentioned that creating a `Magazine` involves specifying an underlying storage mechanism. But how does the data actually get saved reliably? How does the `Magazine` interact with storage like memory, files, or databases? That's the topic of our next chapter!
 

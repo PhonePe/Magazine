@@ -267,4 +267,4 @@ You've now learned about **Sharding**, an important internal technique used by s
 
 While sharding happens mostly behind the scenes, you configure it by setting the number of shards when creating the storage strategy. It primarily affects the output of `getMetaData` (returning data per shard) and adds context to `MagazineData` (indicating the source shard).
 
-This concludes our tour of the core concepts behind the `magazine` library! You've journeyed from the basic `Magazine` idea through `MagazineData`, `MagazineManager`, storage strategies, metadata management, concurrency control, and finally, sharding. With this foundation, you should be well-equipped to understand and use the library effectively for managing temporary data in your applications.
+This concludes our tour of the core concepts behind the `magazine` library! You've journeyed from the basic `Magazine` idea through `MagazineData`, `MagazineManager`, storage strategies, metadata management, concurrency control, and finally, sharding. With this foundation, you should be well-equipped to understand and use the library effectively for managing data in your applications.

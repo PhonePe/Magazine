@@ -1,6 +1,6 @@
 # Chapter 2: MagazineData - Knowing What You Fired
 
-In the [previous chapter](magazine.md), we saw about the `Magazine` concept – a container for temporary data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our email example?
+In the [previous chapter](magazine.md), we saw about the `Magazine` concept – a container for homogeneous data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our email example?
 
 ```java
 // From Chapter 1: Firing an email address
@@ -205,6 +205,6 @@ You can see an example of how `MagazineData` is created within the `fireWithRetr
 
 Module describes that when you `fire` an item from a `Magazine`, you get back more than just the data. You receive a `MagazineData` object, which bundles the data with important context: its `firePointer` (sequence number), its originating `shard` (if sharding is used), and the `magazineIdentifier`. This metadata is crucial for robust processing, logging, and debugging.
 
-So far, we've seen how to interact with a *single* `Magazine`. But what if your application needs multiple magazines for different kinds of temporary data (e.g., one for emails, one for image processing tasks, one for user notifications)? How do you manage all of them? That's where the `MagazineManager` comes in.
+So far, we've seen how to interact with a *single* `Magazine`. But what if your application needs multiple magazines for different kinds of homogeneous data (e.g., one for emails, one for image processing tasks, one for user notifications)? How do you manage all of them? That's where the `MagazineManager` comes in.
 
 Let's explore how to handle multiple magazines in the next chapter: [Chapter 3: MagazineManager](magazinemanager.md).
