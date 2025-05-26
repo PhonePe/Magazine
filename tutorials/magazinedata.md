@@ -1,23 +1,23 @@
 # Chapter 2: MagazineData - Knowing What You Fired
 
-In the [previous chapter](magazine.md), we saw about the `Magazine` concept – a container for homogeneous data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our email example?
+In the [previous chapter](magazine.md), we saw about the `Magazine` concept – a container for homogeneous data. We saw how to `load` data into it and, more importantly, how to `fire` data out when we need to process it. Remember our coupon example?
 
 ```java
-// From Chapter 1: Firing an email address
+// From Chapter 1: Firing a coupon code
 MagazineData<String> firedData = magazineManager.getMagazine(magazineId).fire();
-String emailToSend = firedData.getData(); // We got the email!
+String couponToSend = firedData.getData(); // We got the coupon code!
 ```
 
-But wait, what exactly is this `firedData` object? It's not just the raw `String` email address. It's something called a `MagazineData`. Why do we need this extra wrapper?
+But wait, what exactly is this `firedData` object? It's not just the raw `String` coupon code. It's something called a `MagazineData`. Why do we need this extra wrapper?
 
 ## Why Wrap Fired Data? The Need for Context
 
-Imagine you've fired an email address ("user@example.com") from the `"welcome-email-queue"` magazine. You try to send the email, but something goes wrong! Maybe your email server is temporarily down.
+Imagine you've fired an coupon code ("SAVE20") from the `discount-coupons-queue` magazine. You try to send the coupon code, but something goes wrong! Maybe user's server is temporarily down.
 
-Now, you want to log this failure. Just logging "Failed to send email" isn't very helpful. You need more details:
+Now, you want to log this failure. Just logging "Failed to use coupon code" isn't very helpful. You need more details:
 
-1.  **What** data failed? ("user@example.com")
-2.  **Which** queue did it come from? (`"welcome-email-queue"`)
+1.  **What** data failed? ("SAVE20")
+2.  **Which** queue did it come from? (``discount-coupons-queue``)
 3.  **Exactly which item** was it in the firing sequence? Was it the 5th item fired today? The 100th?
 
 Knowing the exact item can be crucial for debugging, retrying, or even manually deleting a problematic item later. Simply having the raw data isn't enough; we need **context** or **metadata** about *where* and *when* (in the sequence) the data was fired.
@@ -34,10 +34,10 @@ Think of `MagazineData` like recovering a bullet that has been fired from a gun.
 
 `MagazineData` bundles your actual data with this important metadata. It typically contains:
 
-1.  `data`: The actual piece of information you stored (like the `String` email address, an `Integer` user ID, etc.).
+1.  `data`: The actual piece of information you stored (like the `String` coupon code, an `Integer` user ID, etc.).
 2.  `firePointer`: A number representing the sequential position of this item when it was `fire`d from its specific magazine or shard. Think of it as a unique serial number for fired items within that context.
 3.  `shard`: An identifier telling you which specific partition or section of the magazine this data came from. This is particularly relevant when using a feature called [Sharding](sharding.md), which splits a large magazine into smaller parts. If sharding isn't used, this might be a default value or `null`.
-4.  `magazineIdentifier`: The unique name of the `Magazine` this data belongs to (e.g., `"welcome-email-queue"`).
+4.  `magazineIdentifier`: The unique name of the `Magazine` this data belongs to (e.g., ``discount-coupons-queue``).
 
 ## Using `MagazineData`
 
@@ -45,39 +45,38 @@ Let's revisit our `fire` example and see what we can do with the `MagazineData` 
 
 ```java
 // Assume magazineManager, magazineId, dataType are set up as before
-String magazineId = "welcome-email-queue";
+String magazineId = "discount-coupons-queue";
 
 try {
-  // Fire one item
-  MagazineData<String> firedInfo = magazineManager.getMagazine(magazineId).fire();
+    // Fire one item
+    MagazineData<String> firedInfo = magazineManager.getMagazine(magazineId).fire();
+    
+    // Access the components of MagazineData
+    String couponToSend = firedInfo.getData();             // The actual coupon code
+    long sequenceNumber = firedInfo.getFirePointer();      // Its firing sequence number
+    Integer shardId = firedInfo.getShard();                // Which shard (if any)
+    String originMagazine = firedInfo.getMagazineIdentifier(); // Should be "discount-coupons-queue"
 
-  // Access the components of MagazineData
-  String emailToSend = firedInfo.getData();             // The actual email
-  long sequenceNumber = firedInfo.getFirePointer();    // Its firing sequence number
-  Integer shardId = firedInfo.getShard();              // Which shard (if any)
-  String originMagazine = firedInfo.getMagazineIdentifier(); // Should be "welcome-email-queue"
+    log.info("Fired item #" + sequenceNumber + " from magazine '" + originMagazine + "' (Shard: " + shardId + ")");
+    log.info("Data: " + couponToSend);
 
-  log.info("Fired item #" + sequenceNumber + " from magazine '" + originMagazine + "' (Shard: " + shardId + ")");
-  log.info("Data: " + emailToSend);
+    // --- Try processing (e.g., sending coupon) ---
+    boolean success = sendCoupon(couponToSend); // Assume this function exists
 
-  // --- Try processing (e.g., sending email) ---
-  boolean success = sendEmail(emailToSend); // Assume this function exists
-
-  if (success) {
-    log.info("Successfully processed item #" + sequenceNumber);
+    if (success) {
+        log.info("Successfully processed item #" + sequenceNumber);
     // IMPORTANT: Delete the item after successful processing
-    // magazineManager.getMagazine(magazineId).delete(firedInfo); 
+    // magazineManager.getMagazine(magazineId).delete(firedInfo);
     // We'll cover delete properly later!
-  } else {
-    log.info("Failed to process item #" + sequenceNumber + " from magazine '" + originMagazine + "'");
-    // Maybe reload it? Or log it for manual review?
-    // magazineManager.getMagazine(magazineId).reload(emailToSend); 
-  }
-
+    } else {
+        log.info("Failed to process item #" + sequenceNumber + " from magazine '" + originMagazine + "'");
+        // Maybe reload it? Or log it for manual review?
+        // magazineManager.getMagazine(magazineId).reload(couponToSend);
+    }
 } catch (NoSuchElementException e) {
-  log.error("Magazine is empty. No items to fire.");
+    log.error("Magazine is empty. No items to fire.");
 } catch (Exception e) {
-  log.error("An error occurred during firing or processing: " + e.getMessage());
+    log.error("An error occurred during firing or processing: " + e.getMessage());
 }
 ```
 
@@ -109,12 +108,12 @@ sequenceDiagram
     participant DataStore as Actual Storage (e.g., Aerospike)
 
     App ->> Mag: fire()
-    Mag ->> Storage: fire("welcome-email-queue")
-    Storage ->> DataStore: Find next item for "welcome-email-queue"
+    Mag ->> Storage: fire(`discount-coupons-queue`)
+    Storage ->> DataStore: Find next item for `discount-coupons-queue`
     Note right of Storage: Determines next firePointer (e.g., 5)<br/>Determines shard (e.g., Shard 0)
-    DataStore -->> Storage: Return raw data ("user@example.com")
+    DataStore -->> Storage: Return raw data ("SAVE20")
     Storage ->> Storage: Create MagazineData object
-    Note right of Storage: Bundles:<br/>- data: "user@example.com"<br/>- firePointer: 5<br/>- shard: 0<br/>- magazineIdentifier: "welcome-email-queue"
+    Note right of Storage: Bundles:<br/>- data: "SAVE20"<br/>- firePointer: 5<br/>- shard: 0<br/>- magazineIdentifier: `discount-coupons-queue`
     Storage -->> Mag: Return MagazineData object
     Mag -->> App: Return MagazineData object
 ```
@@ -152,7 +151,7 @@ public class MagazineData<T> {
     public String createAerospikeKey() {
         // Combines identifier, shard (if present), and pointer 
         // to create a unique string key.
-        // Example: "welcome-email-queue_shard_0_5" or "my-queue_12"
+        // Example: "discount-coupons-queue_shard_0_5" or "my-queue_12"
         return Objects.nonNull(shard)
                 ? String.format("%s_%s_%d_%d", magazineIdentifier, Constants.SHARD_PREFIX, shard, firePointer)
                 : String.format("%s_%d", magazineIdentifier, firePointer);
@@ -205,6 +204,6 @@ You can see an example of how `MagazineData` is created within the `fireWithRetr
 
 Module describes that when you `fire` an item from a `Magazine`, you get back more than just the data. You receive a `MagazineData` object, which bundles the data with important context: its `firePointer` (sequence number), its originating `shard` (if sharding is used), and the `magazineIdentifier`. This metadata is crucial for robust processing, logging, and debugging.
 
-So far, we've seen how to interact with a *single* `Magazine`. But what if your application needs multiple magazines for different kinds of homogeneous data (e.g., one for emails, one for image processing tasks, one for user notifications)? How do you manage all of them? That's where the `MagazineManager` comes in.
+So far, we've seen how to interact with a *single* `Magazine`. But what if your application needs multiple magazines for different kinds of homogeneous data (e.g., one for coupon codes, one for image processing tasks, one for user notifications)? How do you manage all of them? That's where the `MagazineManager` comes in.
 
 Let's explore how to handle multiple magazines in the next chapter: [Chapter 3: MagazineManager](magazinemanager.md).

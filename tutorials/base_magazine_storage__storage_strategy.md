@@ -1,14 +1,14 @@
 # Chapter 4: BaseMagazineStorage / Storage Strategy
 
-In [Chapter 3: MagazineManager](magazinemanager.md), we saw how the `MagazineManager` acts as a central hub, giving us access to different `Magazine` objects like `"welcome-email-queue"` or `"security-check-queue"`. We learned how to `load` data into a `Magazine` and `fire` it out.
+In [Chapter 3: MagazineManager](magazinemanager.md), we saw how the `MagazineManager` acts as a central hub, giving us access to different `Magazine` objects like ``discount-coupons-queue`` or `coupon-analytics-queue`. We learned how to `load` data into a `Magazine` and `fire` it out.
 
-But have you ever wondered: when you call `magazine.load("user@example.com")`, where does that email address *actually* go? Is it stored in memory? Written to a file? Saved in a database? And how does the library remember which item to `fire` next?
+But have you ever wondered: when you call `magazine.load("user@example.com")`, where does that coupon code *actually* go? Is it stored in memory? Written to a file? Saved in a database? And how does the library remember which item to `fire` next?
 
 This chapter dives into the **engine** that powers the `Magazine`: the `BaseMagazineStorage` and the concept of a Storage Strategy.
 
 ## The Problem: Where Does the Data Live?
 
-Think about our `Magazine` object. We saw in [Chapter 1: Magazine](magazine.md) that it's mostly a coordinator. It takes your commands (`load`, `fire`) but doesn't store the data itself long-term. If your application restarts, you wouldn't want to lose all the emails waiting in the queue!
+Think about our `Magazine` object. We saw in [Chapter 1: Magazine](magazine.md) that it's mostly a coordinator. It takes your commands (`load`, `fire`) but doesn't store the data itself long-term. If your application restarts, you wouldn't want to lose all the coupon code waiting in the queue!
 
 So, the `Magazine` needs a reliable helper to handle the actual saving, retrieving, and managing of data. But we also want flexibility. Maybe today we want to store data super fast in memory for testing, but tomorrow we need to use a powerful database like Aerospike for production because it can handle tons of data and survive crashes.
 
@@ -49,13 +49,13 @@ Let's revisit how `Magazine.load` works, focusing on the interaction with `BaseM
 ```mermaid
 sequenceDiagram
     participant App as Your Application
-    participant Mag as Magazine ("welcome-email-queue")
+    participant Mag as Magazine ("discount-coupons-queue")
     participant Storage as BaseMagazineStorage (e.g., AerospikeStorage)
     participant DataStore as Actual Storage Backend (e.g., Aerospike DB)
 
     App ->> Mag: load("newuser@example.com")
     Note left of Mag: Magazine knows its ID<br/>and has a Storage object.
-    Mag ->> Storage: load("welcome-email-queue", "newuser@example.com")
+    Mag ->> Storage: load("discount-coupons-queue", "SAVE20")
     Note right of Storage: This object knows *how*<br/>to talk to Aerospike.
     Storage ->> DataStore: Write data to Aerospike DB
     DataStore -->> Storage: Confirm success

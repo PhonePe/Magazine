@@ -69,40 +69,39 @@ public class MetaData {
 You can ask a `Magazine` for its current metadata using the `getMetaData()` method. This is useful for monitoring the state of your queue.
 
 ```java
-// Assume magazineManager is set up, and we have our email magazine
+// Assume magazineManager is set up, and we have our coupon magazine
 MagazineManager magazineManager = /* ... */;
-String magazineId = "welcome-email-queue";
+String magazineId = "discount-coupons-queue";
 
 try {
     // Get the magazine
-    Magazine<String> emailMagazine = magazineManager.getMagazine(magazineId);
-
+    Magazine<String> couponMagazine = magazineManager.getMagazine(magazineId);
+    
     // Get its metadata
-    Map<String, MetaData> metadataMap = emailMagazine.getMetaData();
-
+    Map<String, MetaData> metadataMap = couponMagazine.getMetaData();
+    
     // Print the metadata
-    System.out.println("Metadata for magazine '" + magazineId + "':");
+    log.info("Metadata for magazine '" + magazineId + "':");
     for (Map.Entry<String, MetaData> entry : metadataMap.entrySet()) {
         String shardKey = entry.getKey(); // Identifier for the shard/partition
         MetaData meta = entry.getValue(); // The MetaData object for that shard
-
+    
         log.info("  Shard/Partition: " + shardKey);
         log.info("    Load Pointer : " + meta.getLoadPointer());
         log.info("    Fire Pointer : " + meta.getFirePointer());
         log.info("    Load Counter : " + meta.getLoadCounter());
         log.info("    Fire Counter : " + meta.getFireCounter());
-        log.info("    Items Pending: " + (meta.getLoadPointer() - meta.getFirePointer())); // Approximate
+        log.info("    Coupons Pending: " + (meta.getLoadPointer() - meta.getFirePointer())); // Approximate
     }
-
 } catch (Exception e) {
-    log.error("Error getting metadata: " + e.getMessage());
+log.error("Error getting metadata: " + e.getMessage());
 }
 ```
 
 **Explanation:**
 
 1.  We get our specific `Magazine` object using the `MagazineManager`.
-2.  We call `emailMagazine.getMetaData()`.
+2.  We call `couponMagazine.getMetaData()`.
 3.  This method returns a `Map<String, MetaData>`.
     *   **Why a Map?** Because a single `Magazine` might be internally split into multiple partitions or **shards** for better performance (covered in [Chapter 7: Sharding](sharding.md)). Each shard has its *own* set of pointers and counters. The `Map` uses a key (like `"SHARD_0"`, `"SHARD_1"`) to identify each shard and maps it to its corresponding `MetaData` object. If sharding is not used (only 1 shard), the map will likely contain a single entry.
 4.  We loop through the map entries and print the values from each `MetaData` object using its getter methods (`getLoadPointer()`, `getFirePointer()`, etc.).
@@ -111,7 +110,7 @@ try {
 **Example Output (for a magazine with 2 shards):**
 
 ```
-Metadata for magazine 'welcome-email-queue':
+Metadata for magazine 'discount-coupons-queue':
   Shard/Partition: SHARD_0
     Load Pointer : 150
     Fire Pointer : 125
@@ -196,7 +195,7 @@ private long incrementAndGetLoadPointer(final String magazineIdentifier,
     try {
         // 1. Create the key for the POINTERS record for this shard
         String metaKey = createKey(magazineIdentifier, selectedShard, Constants.POINTERS); 
-        // Example key: "welcome-email-queue_SHARD_0_POINTERS"
+        // Example key: "discount-coupons-queue_SHARD_0_POINTERS"
 
         // 2. Define the atomic 'add 1' operation for the load pointer bin
         Bin loadPointerBin = new Bin(Constants.LOAD_POINTER, 1L); // Bin name & value to add

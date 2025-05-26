@@ -6,10 +6,10 @@ But what happens in a busy application where multiple things might be happening 
 
 ## The Problem: Sharing is Hard!
 
-Imagine our `"welcome-email-queue"` magazine is being used by several parts of our application simultaneously:
+Imagine our ``discount-coupons-queue`` magazine is being used by several parts of our application simultaneously:
 
-1.  **Multiple Sign-up Servers:** Two different web servers handle new user sign-ups. What if *both* try to `load` the *exact same* email address ("concurrent.user@example.com") into the magazine at the precise same moment? Should we end up with two identical tasks in the queue?
-2.  **Multiple Worker Processes:** We have several background workers trying to `fire` emails from the queue to send them. What if *two workers* try to `fire` the *very next* available email at the same instant? Could they both get the *same* email, leading to it being sent twice? Or could they mess up the `firePointer`?
+1.  **Multiple Coupon Generators:** Two different services generate discount coupons. What if *both* try to `load` the *exact same* coupon code ("SAVE20") into the magazine at the precise same moment? Should we end up with two identical tasks in the queue?
+2.  **Multiple Worker Processes:** We have several background workers trying to `fire` coupons from the queue to send them. What if *two workers* try to `fire` the *very next* available coupon at the same instant? Could they both get the *same* coupon, leading to it being sent twice? Or could they mess up the `firePointer`?
 
 These scenarios highlight two common challenges in systems that share resources:
 
@@ -38,7 +38,7 @@ The `AerospikeStorage` uses an internal `DistributedLockManager` component (from
 
 ### 3. Deduplication: Checking the Shelf
 
-Sometimes, you want to ensure that a specific piece of data exists *at most once* in your magazine. For example, you probably only want to send one welcome email to "new.user@example.com", even if the sign-up event accidentally gets triggered twice.
+Sometimes, you want to ensure that a specific coupon exists *at most once* in your magazine. For example, you probably only want to send one "SAVE20" coupon, even if the generation event accidentally gets triggered twice.
 
 **Analogy:** Imagine adding books to a library shelf. Deduplication is like checking the shelf first: "Do we already have 'The Great Gatsby' by F. Scott Fitzgerald?" If yes, you don't add another copy. If no, you add it.
 
@@ -50,7 +50,7 @@ Sometimes, you want to ensure that a specific piece of data exists *at most once
 4.  If it *does* already exist in the deduper set, it skips the loading step entirely but still returns `true` (or doesn't throw an error), effectively saying "Yes, this item is considered loaded (or already was)".
 5.  Release the lock.
 
-This ensures that even if `load("new.user@example.com")` is called multiple times concurrently, only one instance of that email will actually be stored and tracked for deduplication purposes.
+This ensures that even if `load("SAVE20")` is called multiple times concurrently, only one instance of that coupon code will actually be stored and tracked for deduplication purposes.
 
 **Important Note:** Deduplication relies on the `toString()` representation of your data object to check for duplicates. It works best with simple types like `String`, `Integer`, `Long`. For complex custom objects, you need to ensure their `toString()` method produces a unique and consistent representation for identical objects.
 
@@ -64,36 +64,36 @@ Let's imagine the setup code (simplified) where you configure the storage strate
 
 ```java
 // Assume you have an Aerospike client connection
-IAerospikeClient aerospikeClient = connectToAerospike(); 
+IAerospikeClient aerospikeClient = connectToAerospike();
 
 // Configuration for Aerospike storage
 AerospikeStorageConfig storageConfig = AerospikeStorageConfig.builder()
-    .namespace("my_app_namespace")
-    .dataSetName("email_queue_data")
-    .metaSetName("email_queue_meta")
-    .recordTtl(3600) // Data TTL in seconds (1 hour)
-    .metaDataTtl(86400) // Metadata TTL (1 day)
-    .shards(1) // Start with 1 shard (no sharding yet)
-    .build();
+        .namespace("my_app_namespace")
+        .dataSetName("coupon_queue_data")
+        .metaSetName("coupon_queue_meta")
+        .recordTtl(3600) // Data TTL in seconds (1 hour)
+        .metaDataTtl(86400) // Metadata TTL (1 day)
+        .shards(1) // Start with 1 shard (no sharding yet)
+        .build();
 
 // === Enable Deduplication Here ===
-boolean useDeduplication = true; 
+boolean useDeduplication = true;
 
 // Create the storage instance for String data
-AerospikeStorage<String> emailStorage = AerospikeStorage.<String>builder()
-    .aerospikeClient(aerospikeClient)
-    .storageConfig(storageConfig)
-    .enableDeDupe(useDeduplication) // <-- Set the flag!
-    .clazz(String.class) // Type of data
-    .clientId("worker-app-1") // Your application's client ID
-    .farmId("production") // Environment identifier
-    .scope(MagazineScope.GLOBAL) // Scope of the magazine
-    .build();
+AerospikeStorage<String> couponStorage = AerospikeStorage.<String>builder()
+        .aerospikeClient(aerospikeClient)
+        .storageConfig(storageConfig)
+        .enableDeDupe(useDeduplication) // <-- Set the flag!
+        .clazz(String.class) // Type of data
+        .clientId("worker-app-1") // Your application's client ID
+        .farmId("production") // Environment identifier
+        .scope(MagazineScope.GLOBAL) // Scope of the magazine
+        .build();
 
-log.info("AerospikeStorage created with Deduplication: " + emailStorage.isEnableDeDupe()); 
+log.info("AerospikeStorage created with Deduplication: " + couponStorage.isEnableDeDupe());
 
 // Now, when you create a Magazine using this storage, deduplication will be active.
-// Magazine<String> emailMagazine = new Magazine<>("welcome-email-queue", emailStorage); 
+// Magazine<String> couponMagazine = new Magazine<>("discount-coupons-queue", couponStorage);
 ```
 
 **Explanation:**
@@ -101,21 +101,21 @@ log.info("AerospikeStorage created with Deduplication: " + emailStorage.isEnable
 1.  We configure various Aerospike settings (namespace, set names, TTLs) in `AerospikeStorageConfig`.
 2.  We create an `AerospikeStorage` instance using its builder.
 3.  Crucially, we call `.enableDeDupe(true)` to turn on the deduplication feature for this storage instance.
-4.  Any `Magazine` created using this `emailStorage` object will now benefit from deduplication during `load` operations.
+4.  Any `Magazine` created using this `couponStorage` object will now benefit from deduplication during `load` operations.
 
 **What happens when you load now?**
 
 ```java
-// Assume emailMagazine uses the storage configured above with enableDeDupe=true
-Magazine<String> emailMagazine = /* ... created with emailStorage ... */;
+// Assume couponMagazine uses the storage configured above with enableDeDupe=true
+Magazine<String> couponMagazine = /* ... created with couponStorage ... */;
 
-// First time loading this email
-boolean loaded1 = emailMagazine.load("duplicate.test@example.com"); 
+// First time loading this coupon
+boolean loaded1 = couponMagazine.load("SAVE20");
 log.info("First load attempt: " + loaded1); // Output: First load attempt: true
 
-// Try loading the exact same email again
-boolean loaded2 = emailMagazine.load("duplicate.test@example.com"); 
-log.info("Second load attempt: " + loaded2); // Output: Second load attempt: true 
+// Try loading the exact same coupon again
+boolean loaded2 = couponMagazine.load("SAVE20");
+log.info("Second load attempt: " + loaded2); // Output: Second load attempt: true
 ```
 
 **Explanation:**

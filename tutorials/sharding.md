@@ -2,7 +2,7 @@
 
 Welcome to the final chapter of our core concepts tutorial! In [Chapter 6: Concurrency Control & Deduplication](concurrency_control__deduplication.md), we explored how the `magazine` library handles simultaneous operations and prevents duplicate data entries, making it robust for busy applications.
 
-Now, let's think about scale. What happens when a single `Magazine`, like our `"welcome-email-queue"`, becomes extremely popular and needs to handle millions or even billions of items?
+Now, let's think about scale. What happens when a single `Magazine`, like our ``discount-coupons-queue``, becomes extremely popular and needs to handle millions or even billions of items?
 
 ## The Problem: One Giant Queue Can Be Slow
 
@@ -21,9 +21,9 @@ How can we handle a massive workload more efficiently?
 
 The solution is **Sharding**. It's an internal strategy used by storage implementations like `AerospikeStorage` to break down one logical `Magazine` into multiple smaller, independent physical partitions, called **shards**.
 
-**Analogy:** Instead of one enormous conveyor belt, imagine replacing it with several shorter conveyor belts working side-by-side, all serving the *same logical purpose* (e.g., handling welcome emails).
+**Analogy:** Instead of one enormous conveyor belt, imagine replacing it with several shorter conveyor belts working side-by-side, all serving the *same logical purpose* (e.g., handling coupon code).
 
-*   **Logical Magazine:** You still interact with a single `Magazine` object named `"welcome-email-queue"`.
+*   **Logical Magazine:** You still interact with a single `Magazine` object named ``discount-coupons-queue``.
 *   **Physical Shards:** Internally, the storage splits this into, say, 64 separate partitions (Shard 0, Shard 1, ... Shard 63).
 *   **Independent Operation:** Each shard acts like its own mini-magazine. It has its *own* set of [MetaData (Pointers & Counters)](metadata_pointers_counters.md) (`loadPointer`, `firePointer`, etc.).
 
@@ -51,27 +51,27 @@ Let's look at the `AerospikeStorageConfig` again:
 // Example: Configuring Aerospike storage
 
 AerospikeStorageConfig storageConfig = AerospikeStorageConfig.builder()
-    .namespace("my_app_namespace")
-    .dataSetName("email_queue_data")
-    .metaSetName("email_queue_meta")
-    .recordTtl(3600) 
-    // --- Configure the number of shards ---
-    .shards(64) // <-- Use 64 shards for this magazine! (Default is often 64)
-    // .shards(1) // <-- Or explicitly use only 1 shard (no sharding)
-    .metaDataTtl(86400)
-    .build();
+        .namespace("my_app_namespace")
+        .dataSetName("coupon_queue_data")
+        .metaSetName("coupon_queue_meta")
+        .recordTtl(3600)
+        // --- Configure the number of shards ---
+        .shards(64) // <-- Use 64 shards for this magazine! (Default is often 64)
+        // .shards(1) // <-- Or explicitly use only 1 shard (no sharding)
+        .metaDataTtl(86400)
+        .build();
 
 // Create the storage instance (assuming aerospikeClient, etc. are set up)
-AerospikeStorage<String> emailStorage = AerospikeStorage.<String>builder()
-    .aerospikeClient(aerospikeClient)
-    .storageConfig(storageConfig) 
-    // ... other config like enableDeDupe, clazz, clientId ...
-    .build();
+AerospikeStorage<String> couponStorage = AerospikeStorage.<String>builder()
+        .aerospikeClient(aerospikeClient)
+        .storageConfig(storageConfig)
+        // ... other config like enableDeDupe, clazz, clientId ...
+        .build();
 
-log.info("AerospikeStorage configured with " + emailStorage.getShards() + " shards."); 
+log.info("AerospikeStorage configured with " + couponStorage.getShards() + " shards.");
 
 // Now, create the Magazine using this storage strategy
-// Magazine<String> emailMagazine = new Magazine<>("welcome-email-queue", emailStorage);
+Magazine<String> couponMagazine = new Magazine<>("discount-coupons-queue", couponStorage);
 ```
 
 **Explanation:**
@@ -79,19 +79,19 @@ log.info("AerospikeStorage configured with " + emailStorage.getShards() + " shar
 *   We use the `.shards(numberOfShards)` method on the `AerospikeStorageConfig.builder()`.
 *   Setting it to a value greater than 1 (e.g., `64`) enables sharding. The storage strategy will manage these internal partitions. The default in `AerospikeStorage` is often 64.
 *   Setting it to `1` effectively disables sharding, making it behave like the single-queue model.
-*   The `Magazine` object you create using this `emailStorage` will now operate with the configured number of shards internally.
+*   The `Magazine` object you create using this `couponStorage` will now operate with the configured number of shards internally.
 
 ### Impact on Usage
 
 *   **`load`, `fire`, `reload`:** These methods on the `Magazine` object work exactly the same way from your code's perspective. You don't need to specify a shard.
     ```java
     // Code looks the same whether sharding is enabled or not
-    emailMagazine.load("user@example.com"); 
-    MagazineData<String> firedItem = emailMagazine.fire();
+    couponMagazine.load("SAVE20"); 
+    MagazineData<String> firedItem = couponMagazine.fire();
     ```
 *   **`getMetaData`:** As we saw in [Chapter 5: MetaData (Pointers & Counters)](metadata_pointers_counters.md), this method returns a `Map<String, MetaData>`. When sharding is enabled, this map will contain an entry for *each shard*, allowing you to see the state of each partition.
     ```java
-    Map<String, MetaData> metadataMap = emailMagazine.getMetaData();
+    Map<String, MetaData> metadataMap = couponMagazine.getMetaData();
     // If shards=64, this map will have 64 entries like:
     // "SHARD_0" -> MetaData for shard 0
     // "SHARD_1" -> MetaData for shard 1
@@ -100,13 +100,13 @@ log.info("AerospikeStorage configured with " + emailStorage.getShards() + " shar
     ```
 *   **`MagazineData`:** The `MagazineData` object returned by `fire()` contains a `shard` field. When sharding is enabled, this field will tell you which specific shard the data item came from.
     ```java
-    MagazineData<String> firedInfo = emailMagazine.fire();
+    MagazineData<String> firedInfo = couponMagazine.fire();
     if (firedInfo != null) {
-        String email = firedInfo.getData();
+        String couponCode = firedInfo.getData();
         Integer shardId = firedInfo.getShard(); // Get the shard ID (e.g., 0, 1, ..., 63)
         long pointer = firedInfo.getFirePointer(); // Pointer within that shard
 
-        log.info("Fired '" + email + "' from Shard: " + shardId + " at position " + pointer);
+        log.info("Fired '" + couponCode + "' from Shard: " + shardId + " at position " + pointer);
     }
     ```
 

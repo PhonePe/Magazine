@@ -2,17 +2,17 @@
 
 In the previous chapters, we saw about the [Magazine](magazine.md) – a container for homogeneous data items like bullets in a rifle magazine – and [MagazineData](magazinedata.md) – the object you get back when you `fire` an item, which includes the data plus extra context.
 
-So far, we've focused on using a *single* magazine, like our `"welcome-email-queue"`. But what if your application needs to handle *multiple* kinds of data?
+So far, we've focused on using a *single* magazine, like our ``discount-coupons-queue``. But what if your application needs to handle *multiple* kinds of data?
 
 ## The Problem: Juggling Many Magazines
 
-Imagine your application is growing. Besides sending welcome emails, you now also need to:
+Imagine your application is growing. Besides distributing discount coupons, you now also need to:
 
-1.  Queue up user profile pictures for background resizing (`"image-resize-queue"`).
-2.  Temporarily store IDs of users who need a security check (`"security-check-queue"`).
-3.  Buffer analytics events before sending them in batches (`"analytics-event-queue"`).
+1.  Queue up promotional offers for specific users (`"promotional-offers-queue"`).
+2.  Temporarily store IDs of users eligible for loyalty rewards (`"promotional-offers-queue"`).
+3.  Buffer analytics events related to coupon usage (`"coupon-analytics-queue"`).
 
-Each of these tasks needs its *own* `Magazine` because they hold different types of data (email addresses are `String`, image task details might be a custom `ImageTask` object, user IDs could be `Integer`, analytics events might be `EventData` objects).
+Each of these tasks needs its *own* `Magazine` because they hold different types of data (coupon code are `String`, user IDs could be `Integer`, analytics events might be `EventData` objects).
 
 How do you keep track of all these different magazines? Where do you get the right magazine when you need it? Just creating `Magazine` objects scattered throughout your code can quickly become messy and hard to manage.
 
@@ -44,7 +44,7 @@ First, you need to create an instance of `MagazineManager`. It usually requires 
 
 ```java
 // Give your application instance a name
-String myAppClientId = "order-processing-service-instance-1"; 
+String myAppClientId = "coupon-distribution-service-instance-1";
 
 // Create the manager
 MagazineManager magazineManager = new MagazineManager(myAppClientId);
@@ -62,7 +62,7 @@ log.info("MagazineManager created for client: " + magazineManager.getClientId())
 The `MagazineManager` doesn't create the actual `Magazine` objects for you. You need to define and create them first, usually during your application's startup or configuration phase.
 
 Creating a `Magazine` involves specifying:
-*   Its unique `magazineIdentifier` (e.g., `"welcome-email-queue"`).
+*   Its unique `magazineIdentifier` (e.g., ``discount-coupons-queue``).
 *   The type of data it will hold (e.g., `String.class`).
 *   The underlying storage mechanism it should use ([BaseMagazineStorage / Storage Strategy](base_magazine_storage__storage_strategy.md) - we'll cover this in the next chapter!).
 
@@ -72,13 +72,13 @@ For now, let's imagine we have created two `Magazine` objects (we'll see *how* t
 // --- Conceptual Example (Full creation depends on Storage Strategy) ---
 
 // Imagine we have configured and created these Magazine objects:
-Magazine<String> emailMagazine = /* ... created with ID "welcome-email-queue" ... */;
-Magazine<Integer> securityCheckMagazine = /* ... created with ID "security-check-queue" ... */; 
+Magazine<String> couponMagazine = /* ... created with ID "discount-coupons-queue" ... */;
+Magazine<Integer> loyaltyRewardsMagazine = /* ... created with ID "loyalty-rewards-queue" ... */;
 
 // We need a list to hold them
 List<Magazine<?>> allMyMagazines = new ArrayList<>();
-allMyMagazines.add(emailMagazine);
-allMyMagazines.add(securityCheckMagazine);
+allMyMagazines.add(couponMagazine);
+allMyMagazines.add(loyaltyRewardsMagazine);
 
 log.info("Prepared a list of " + allMyMagazines.size() + " magazines.");
 ```
@@ -102,7 +102,7 @@ log.info("MagazineManager refreshed. It now knows about our magazines.");
 
 **Explanation:**
 *   The `refresh(magazines)` method takes the `List<Magazine<?>>` we created.
-*   It updates the manager's internal registry, making it aware of `"welcome-email-queue"` and `"security-check-queue"`. If `refresh` is called again later with a different list, it will replace the old set of known magazines with the new one.
+*   It updates the manager's internal registry, making it aware of ``discount-coupons-queue`` and `"coupon-analytics-queue"`. If `refresh` is called again later with a different list, it will replace the old set of known magazines with the new one.
 
 ### 4. Getting and Using a Specific Magazine
 
@@ -111,30 +111,27 @@ Once the manager is refreshed, you can ask for a specific magazine anytime you n
 ```java
 // Assume magazineManager is created and refreshed
 
-String emailQueueId = "welcome-email-queue";
-String securityQueueId = "security-check-queue";
+String couponQueueId = "discount-coupons-queue";
+String loyaltyQueueId = "loyalty-rewards-queue";
 
 try {
-    // Get the magazine for welcome emails (we know it holds Strings)
-    Magazine<String> welcomeEmailMag = magazineManager.getMagazine(emailQueueId);
-    
+    // Get the magazine for discount coupons (we know it holds Strings)
+    Magazine<String> couponMag = magazineManager.getMagazine(couponQueueId);
+
     // Now use it just like in Chapter 1!
-    welcomeEmailMag.load("newbie@example.com");
-    log.info("Loaded email via manager.");
+    couponMag.load("SAVE20");
+    log.info("Loaded coupon via manager.");
 
-    // Get the magazine for security checks (we know it holds Integers)
-    Magazine<Integer> securityCheckMag = magazineManager.getMagazine(securityQueueId);
-    
+    // Get the magazine for loyalty rewards (we know it holds Integers)
+    Magazine<Integer> loyaltyMag = magazineManager.getMagazine(loyaltyQueueId);
+
     // Use it
-    securityCheckMag.load(12345); // Load user ID 12345
+    loyaltyMag.load(12345); // Load user ID 12345
     log.info("Loaded user ID via manager.");
-
-    // Try to get a magazine that doesn't exist
-    // Magazine<Double> nonExistentMag = magazineManager.getMagazine("unknown-queue"); 
 
 } catch (MagazineException e) {
     // Handle the case where the magazine identifier is not found
-    log.error("Error getting magazine: " + e.getMessage()); 
+    log.error("Error getting magazine: " + e.getMessage());
 } catch (Exception e) {
     // Handle other potential errors (like ClassCastException, see below)
     log.error("An unexpected error occurred: " + e.getMessage());
@@ -143,9 +140,9 @@ try {
 
 **Explanation:**
 1.  We use `magazineManager.getMagazine(identifier)` to retrieve a magazine.
-2.  We provide the unique `magazineIdentifier` (e.g., `"welcome-email-queue"`).
+2.  We provide the unique `magazineIdentifier` (e.g., ``discount-coupons-queue``).
 3.  The manager looks up and returns the corresponding `Magazine` object.
-4.  **Important Type Safety Note:** The `getMagazine` method in the current library version returns a `Magazine<?>`. You need to cast it to the correct specific type (like `Magazine<String>` or `Magazine<Integer>`). If you try to get a magazine using an identifier that the manager doesn't know about (like `"unknown-queue"`), it will throw a `MagazineException`. If you mistakenly cast the result to the wrong type (e.g., casting the email magazine to `Magazine<Integer>`), you might get a `ClassCastException` later when you try to use it. It's crucial that *you* know the correct data type associated with each `magazineIdentifier`.
+4.  **Important Type Safety Note:** The `getMagazine` method in the current library version returns a `Magazine<?>`. You need to cast it to the correct specific type (like `Magazine<String>` or `Magazine<Integer>`). If you try to get a magazine using an identifier that the manager doesn't know about (like `"unknown-queue"`), it will throw a `MagazineException`. If you mistakenly cast the result to the wrong type (e.g., casting the coupon code magazine to `Magazine<Integer>`), you might get a `ClassCastException` later when you try to use it. It's crucial that *you* know the correct data type associated with each `magazineIdentifier`.
 
 ## How Does it Work Internally? (Under the Hood)
 
@@ -155,7 +152,7 @@ The `MagazineManager` is actually quite simple internally. It primarily acts as 
 
 **Core Mechanism:**
 The `MagazineManager` uses a `java.util.Map` (specifically, a `HashMap`) called `magazineMap`.
-*   The **keys** of the map are the `String` magazine identifiers (e.g., `"welcome-email-queue"`).
+*   The **keys** of the map are the `String` magazine identifiers (e.g., ``discount-coupons-queue``).
 *   The **values** of the map are the actual `Magazine<?>` objects themselves.
 
 **Sequence of Getting a Magazine:**
@@ -166,8 +163,8 @@ sequenceDiagram
     participant Mgr as MagazineManager
     participant IntMap as Internal Map (magazineMap)
 
-    App->>Mgr: getMagazine("welcome-email-queue")
-    Mgr->>IntMap: Look up key "welcome-email-queue"
+    App->>Mgr: getMagazine("discount-coupons-queue")
+    Mgr->>IntMap: Look up key "discount-coupons-queue"
     IntMap-->>Mgr: Return corresponding Magazine<String> object (as Magazine<?>)
     Note right of Mgr: Check if found (not null)
     Mgr-->>App: Return the found Magazine<?> object 
