@@ -2,7 +2,8 @@
 
 This library helps you manage collections of data in your applications in a distributed persistent queue fashion. Think of situations where you need to hold onto some information, process it afterwards.
 
-Let's start with a simple story. Imagine you're building a system that needs to distribute discount coupons to users. Maybe you want to send a coupon shortly after a user completes a purchase. You don't want to send it immediately in the purchase process (what if the coupon generation fails?), but you need to remember to send it soon. You need a place to store the "send coupon to user X" task. This is where the Magazine concept comes in handy!
+Let's start with a simple story. Imagine you're building a system that needs to distribute discount coupons to users. any merchant wants to distribute coupons via PhonePe to the users. Once the user fulfils the targeting criteria, we want to grant the merchant's coupon to the user. But the available coupons are limited and exclusive to the merchant. 
+This is where magazine library comes in handy, here merchant can load the coupons in magazine (or keep on loading), and usersq firing the magazine whenever the criteria is fulfilled (criteria handling feature is not provided by magazine). 
 
 ## What is a Magazine?
 
