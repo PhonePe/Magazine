@@ -106,7 +106,7 @@
         <aerospike.version>6.1.7</aerospike.version>
 
         <!-- Sonar properties -->
-        <sonar.projectKey>PhonePe_magazine</sonar.projectKey>
+        <sonar.projectKey>PhonePe_Magazine</sonar.projectKey>
         <sonar.organization>phonepe</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.sources>src/main</sonar.sources>
