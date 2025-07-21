@@ -163,7 +163,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void put(EventLoop eventLoop, WriteListener listener, WritePolicy policy, Key key, Bin... bins) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -192,7 +192,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void append(EventLoop eventLoop, WriteListener listener, WritePolicy policy, Key key, Bin... bins) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -215,7 +215,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void prepend(EventLoop eventLoop, WriteListener listener, WritePolicy policy, Key key, Bin... bins) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -238,7 +238,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void add(EventLoop eventLoop, WriteListener listener, WritePolicy policy, Key key, Bin... bins) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -262,7 +262,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void delete(EventLoop eventLoop, DeleteListener listener, WritePolicy policy, Key key) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -278,7 +278,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchPolicy batchPolicy,
             BatchDeletePolicy batchDeletePolicy,
             Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -287,12 +287,12 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchPolicy batchPolicy,
             BatchDeletePolicy batchDeletePolicy,
             Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void truncate(InfoPolicy policy, String ns, String set, Calendar beforeLastUpdate) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -311,7 +311,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void touch(EventLoop eventLoop, WriteListener listener, WritePolicy policy, Key key) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -329,7 +329,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void exists(EventLoop eventLoop, ExistsListener listener, Policy policy, Key key) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -355,12 +355,12 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void exists(EventLoop eventLoop, ExistsArrayListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void exists(EventLoop eventLoop, ExistsSequenceListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -378,7 +378,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void get(EventLoop eventLoop, RecordListener listener, Policy policy, Key key) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -409,7 +409,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void get(EventLoop eventLoop, RecordListener listener, Policy policy, Key key, String... binNames) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -434,7 +434,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void getHeader(EventLoop eventLoop, RecordListener listener, Policy policy, Key key) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -475,12 +475,12 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void get(EventLoop eventLoop, RecordArrayListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void get(EventLoop eventLoop, RecordSequenceListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -525,12 +525,12 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void get(EventLoop eventLoop, RecordArrayListener listener, BatchPolicy policy, Key[] keys, String... binNames) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void get(EventLoop eventLoop, RecordSequenceListener listener, BatchPolicy policy, Key[] keys, String... binNames) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -596,12 +596,12 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void getHeader(EventLoop eventLoop, RecordArrayListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void getHeader(EventLoop eventLoop, RecordSequenceListener listener, BatchPolicy policy, Key[] keys) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -626,7 +626,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void operate(EventLoop eventLoop, RecordListener listener, WritePolicy policy, Key key, Operation... operations) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -640,7 +640,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchOperateListListener batchOperateListListener,
             BatchPolicy batchPolicy,
             List<BatchRecord> list) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -648,7 +648,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchRecordSequenceListener batchRecordSequenceListener,
             BatchPolicy batchPolicy,
             List<BatchRecord> list) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -666,7 +666,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchWritePolicy batchWritePolicy,
             Key[] keys,
             Operation... operations) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -676,7 +676,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             BatchWritePolicy batchWritePolicy,
             Key[] keys,
             Operation... operations) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -705,7 +705,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void scanAll(EventLoop eventLoop, RecordSequenceListener listener, ScanPolicy policy, String namespace, String setName, String... binNames) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -762,7 +762,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s1,
             ScanCallback scanCallback,
             String... strings) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -773,7 +773,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             String s1,
             String... strings) throws AerospikeException {
-
+        // Do Nothing
     }
 
 
@@ -850,7 +850,7 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void execute(EventLoop eventLoop, ExecuteListener listener, WritePolicy policy, Key key, String packageName, String functionName, Value... functionArgs) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -872,7 +872,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             String s1,
             Value... values) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -884,7 +884,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             String s1,
             Value... values) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -960,14 +960,14 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void query(EventLoop eventLoop, RecordSequenceListener listener, QueryPolicy policy, Statement statement) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void query(QueryPolicy queryPolicy,
             Statement statement,
             QueryListener queryListener) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -975,7 +975,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             Statement statement,
             PartitionFilter partitionFilter,
             QueryListener queryListener) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1010,7 +1010,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             QueryPolicy queryPolicy,
             Statement statement,
             PartitionFilter partitionFilter) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1087,7 +1087,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             IndexType indexType,
             IndexCollectionType indexCollectionType,
             CTX... ctxes) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1138,7 +1138,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             String s1,
             String s2) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -1147,7 +1147,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             InfoPolicy infoPolicy,
             Node node,
             String... strings) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -1155,7 +1155,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             String s1,
             Expression expression) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1256,7 +1256,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             List<Privilege> list,
             List<String> list1) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -1266,7 +1266,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             List<String> list1,
             int i,
             int i1) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1317,7 +1317,7 @@ public class MockAerospikeClient implements IAerospikeClient {
     public void setWhitelist(AdminPolicy adminPolicy,
             String s,
             List<String> list) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
@@ -1325,7 +1325,7 @@ public class MockAerospikeClient implements IAerospikeClient {
             String s,
             int i,
             int i1) throws AerospikeException {
-
+        // Do Nothing
     }
 
     /**
@@ -1450,12 +1450,12 @@ public class MockAerospikeClient implements IAerospikeClient {
 
     @Override
     public void get(EventLoop eventLoop, BatchListListener listener, BatchPolicy policy, List<BatchRead> records) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
     public void get(EventLoop eventLoop, BatchSequenceListener listener, BatchPolicy policy, List<BatchRead> records) throws AerospikeException {
-
+        // Do Nothing
     }
 
     @Override
