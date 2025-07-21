@@ -114,7 +114,7 @@ public class Magazine<T> {
                 .accept(new StorageTypeVisitor<Boolean>() {
                     @Override
                     public Boolean visitAerospike() throws ExecutionException, RetryException {
-                        final AerospikeStorage storage = (AerospikeStorage) baseMagazineStorage;
+                        final AerospikeStorage<T> storage = (AerospikeStorage) baseMagazineStorage;
 
                         final Record magazineRecord = (Record) storage.getRetryerFactory()
                                 .getRetryer()
