@@ -556,7 +556,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                         new Key(namespace, dataSetName, keyAndMagazineDataPair.getLeft()),
                         keyAndMagazineDataPair.getRight()
                 ))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private AsyncLoadingCache<String, List<String>> initializeCache() {
