@@ -571,7 +571,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                     && (metaData.getLoadPointer() > metaData.getFirePointer()));
                         })
                         .map(Map.Entry::getKey)
-                        .collect(Collectors.toList()));
+                        .toList());
     }
 
     private void validateDataType(final T data) {
