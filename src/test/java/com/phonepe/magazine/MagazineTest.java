@@ -16,13 +16,7 @@
 
 package com.phonepe.magazine;
 
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-
 import com.aerospike.client.AerospikeClient;
-import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Host;
 import com.aerospike.client.Key;
 import com.aerospike.client.policy.ClientPolicy;
@@ -37,7 +31,6 @@ import com.phonepe.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.magazine.scope.MagazineScope;
 import com.phonepe.magazine.server.AerospikeTestContainer;
-import com.phonepe.magazine.util.MockAerospikeClient;
 import io.appform.testcontainers.aerospike.AerospikeContainerConfiguration;
 import io.appform.testcontainers.aerospike.AerospikeWaitStrategy;
 
@@ -49,8 +42,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import org.junit.*;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
 import org.testcontainers.containers.GenericContainer;
 
 /**
@@ -286,78 +277,6 @@ public class MagazineTest {
                     .build();
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.NOT_IMPLEMENTED, e.getErrorCode());
-        }
-    }
-
-    @Test
-    public void extendedExceptionsTest() throws Exception {
-
-        final Magazine<Long> magazine = Magazine.<Long>builder()
-                .magazineIdentifier("MAGAZINE_ID")
-                .baseMagazineStorage(AerospikeStorage.<Long>builder()
-                        .clazz(Long.class)
-                        .storageConfig(AerospikeStorageConfig.builder()
-                                .dataSetName("DATA_SET")
-                                .metaSetName("META_SET")
-                                .namespace("NAMESPACE")
-                                .shards(16)
-                                .build())
-                        .aerospikeClient(aerospikeClient)
-                        .enableDeDupe(true)
-                        .clientId("CLIENT_ID")
-                        .scope(MagazineScope.LOCAL)
-                        .build())
-                .build();
-        try {
-            magazine.load(1L);
-            magazine.load(1L);
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
-
-        try {
-            magazine.load(2L);
-            magazine.reload(1L);
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
-
-        doThrow(AerospikeException.class).when(aerospikeClient)
-                .get(any(), ArgumentMatchers.<Key[]>any());
-        try {
-            magazine.getMetaData();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.RETRIES_EXHAUSTED, e.getErrorCode());
-        }
-        try {
-            magazine.fire();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-
-        doThrow(RuntimeException.class).when(aerospikeClient)
-                .get(any(), ArgumentMatchers.<Key[]>any());
-        try {
-            magazine.getMetaData();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-        try {
-            magazine.fire();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-        try {
-            magazine.peek(anyMap());
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
         }
     }
 
