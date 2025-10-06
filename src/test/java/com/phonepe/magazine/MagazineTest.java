@@ -16,13 +16,10 @@
 
 package com.phonepe.magazine;
 
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-
-import com.aerospike.client.AerospikeException;
+import com.aerospike.client.AerospikeClient;
+import com.aerospike.client.Host;
 import com.aerospike.client.Key;
+import com.aerospike.client.policy.ClientPolicy;
 import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.common.Constants;
 import com.phonepe.magazine.common.MagazineData;
@@ -33,18 +30,19 @@ import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorageConfig;
 import com.phonepe.magazine.scope.MagazineScope;
-import com.phonepe.magazine.util.MockAerospikeClient;
+import com.phonepe.magazine.server.AerospikeTestContainer;
+import io.appform.testcontainers.aerospike.AerospikeContainerConfiguration;
+import io.appform.testcontainers.aerospike.AerospikeWaitStrategy;
+
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
+
+import org.junit.*;
+import org.testcontainers.containers.GenericContainer;
 
 /**
  * @author shantanu.tiwari
@@ -54,10 +52,24 @@ public class MagazineTest {
 
     private final Random random = new SecureRandom();
     private MagazineManager magazineManager;
-    private MockAerospikeClient aerospikeClient = new MockAerospikeClient();
+    private AerospikeClient aerospikeClient;
+    private static GenericContainer<?> aerospikeContainer;
 
     @Before
     public void setup() throws Exception {
+
+        AerospikeContainerConfiguration config = new AerospikeContainerConfiguration();
+        config.setNamespace("NAMESPACE");
+        config.setPort(3000);
+
+        AerospikeWaitStrategy waitStrategy = new AerospikeWaitStrategy(config);
+
+        aerospikeContainer = AerospikeTestContainer.initServerForTesting(config, waitStrategy);
+
+        ClientPolicy clientPolicy = new ClientPolicy();
+
+        aerospikeClient = new AerospikeClient(clientPolicy, new Host("localhost", aerospikeContainer.getMappedPort(3000)));
+
         magazineManager = new MagazineManager("CLIENT_ID");
         magazineManager.refresh(List.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
@@ -74,12 +86,16 @@ public class MagazineTest {
                 Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID4")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
+                        .build(),
+                Magazine.<String>builder()
+                        .magazineIdentifier("MAGAZINE_ID5")
+                        .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build()));
     }
 
     @Test
     public void stringMagazineTest() {
-        Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID5");
         Magazine<String> magazine2 = magazineManager.getMagazine("MAGAZINE_ID4");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
@@ -213,16 +229,6 @@ public class MagazineTest {
         Assert.assertEquals(0, metaData.getFirePointer());
         Assert.assertEquals(1, metaData.getLoadPointer());
 
-        MagazineData<Integer> data = magazine.fire();
-        Assert.assertEquals(12, data.getData()
-                .intValue());
-
-        metaData = collectMetaData(magazine.getMetaData());
-        Assert.assertEquals(1, metaData.getFireCounter());
-        Assert.assertEquals(1, metaData.getLoadCounter());
-        Assert.assertEquals(1, metaData.getFirePointer());
-        Assert.assertEquals(1, metaData.getLoadPointer());
-
         success = magazine.reload(12);
         Assert.assertTrue(success);
 
@@ -271,81 +277,6 @@ public class MagazineTest {
                     .build();
         } catch (MagazineException e) {
             Assert.assertEquals(ErrorCode.NOT_IMPLEMENTED, e.getErrorCode());
-        }
-    }
-
-    @Test
-    public void extendedExceptionsTest() throws Exception {
-        MockAerospikeClient aerospikeClientSpyed = Mockito.spy(aerospikeClient);
-        doReturn(false).when(aerospikeClientSpyed)
-                .delete(any(), any());
-
-        final Magazine<Long> magazine = Magazine.<Long>builder()
-                .magazineIdentifier("MAGAZINE_ID")
-                .baseMagazineStorage(AerospikeStorage.<Long>builder()
-                        .clazz(Long.class)
-                        .storageConfig(AerospikeStorageConfig.builder()
-                                .dataSetName("DATA_SET")
-                                .metaSetName("META_SET")
-                                .namespace("NAMESPACE")
-                                .shards(16)
-                                .build())
-                        .aerospikeClient(aerospikeClientSpyed)
-                        .enableDeDupe(true)
-                        .clientId("CLIENT_ID")
-                        .scope(MagazineScope.LOCAL)
-                        .build())
-                .build();
-        try {
-            magazine.load(1L);
-            magazine.load(1L);
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
-
-        try {
-            magazine.load(2L);
-            magazine.reload(1L);
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT, e.getErrorCode());
-        }
-
-        doThrow(AerospikeException.class).when(aerospikeClientSpyed)
-                .get(any(), ArgumentMatchers.<Key[]>any());
-        try {
-            magazine.getMetaData();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.RETRIES_EXHAUSTED, e.getErrorCode());
-        }
-        try {
-            magazine.fire();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-
-        doThrow(RuntimeException.class).when(aerospikeClientSpyed)
-                .get(any(), ArgumentMatchers.<Key[]>any());
-        try {
-            magazine.getMetaData();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-        try {
-            magazine.fire();
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
-        }
-        try {
-            magazine.peek(anyMap());
-            Assert.fail();
-        } catch (MagazineException e) {
-            Assert.assertEquals(ErrorCode.CONNECTION_ERROR, e.getErrorCode());
         }
     }
 

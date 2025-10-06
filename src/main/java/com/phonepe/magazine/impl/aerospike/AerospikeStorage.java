@@ -210,10 +210,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     @Override
     public void delete(final MagazineData<T> magazineData) {
         try {
+            final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             retryerFactory.getRetryer()
                     .call(() -> {
                         aerospikeClient.delete(
-                                aerospikeClient.getWritePolicyDefault(),
+                                writePolicy,
                                 new Key(namespace, dataSetName, magazineData.createAerospikeKey()));
                         return true;
                     });
@@ -351,7 +352,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             RetryException {
         return (Record) retryerFactory.getRetryer()
                 .call(() -> {
-                    final WritePolicy writePolicy = aerospikeClient.getWritePolicyDefault();
+                    final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                     writePolicy.expiration = getMetaDataTtl();
 
@@ -555,7 +556,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                         new Key(namespace, dataSetName, keyAndMagazineDataPair.getLeft()),
                         keyAndMagazineDataPair.getRight()
                 ))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private AsyncLoadingCache<String, List<String>> initializeCache() {
@@ -570,7 +571,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                     && (metaData.getLoadPointer() > metaData.getFirePointer()));
                         })
                         .map(Map.Entry::getKey)
-                        .collect(Collectors.toList()));
+                        .toList());
     }
 
     private void validateDataType(final T data) {

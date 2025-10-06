@@ -114,7 +114,7 @@ public class Magazine<T> {
                 .accept(new StorageTypeVisitor<Boolean>() {
                     @Override
                     public Boolean visitAerospike() throws ExecutionException, RetryException {
-                        final AerospikeStorage storage = (AerospikeStorage) baseMagazineStorage;
+                        final AerospikeStorage<T> storage = (AerospikeStorage) baseMagazineStorage;
 
                         final Record magazineRecord = (Record) storage.getRetryerFactory()
                                 .getRetryer()
@@ -128,8 +128,8 @@ public class Magazine<T> {
                                                                         Constants.SHARDS_BIN))));
 
                         if (magazineRecord == null) {
-                            final WritePolicy writePolicy = storage.getAerospikeClient()
-                                    .getWritePolicyDefault();
+                            final WritePolicy writePolicy = new WritePolicy(storage.getAerospikeClient()
+                                    .getWritePolicyDefault());
                             writePolicy.expiration = Constants.SHARDS_DEFAULT_TTL;
                             storage.getRetryerFactory()
                                     .getRetryer()
