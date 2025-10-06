@@ -104,6 +104,8 @@
         <DLM.version>1.0.0</DLM.version>
         <caffeine.version>2.7.0</caffeine.version>
         <aerospike.version>6.1.7</aerospike.version>
+        <testcontainer.version>1.16.2</testcontainer.version>
+        <junit.testcontainer.version>1.0.10</junit.testcontainer.version>
 
         <!-- Sonar properties -->
         <sonar.projectKey>PhonePe_Magazine</sonar.projectKey>
@@ -177,6 +179,24 @@
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainer.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.appform.testcontainer</groupId>
+            <artifactId>junit-testcontainer-aerospike</artifactId>
+            <version>${junit.testcontainer.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
