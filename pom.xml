@@ -98,7 +98,7 @@
         <maven.surefire.plugin.version>3.0.0-M8</maven.surefire.plugin.version>
         <sonatype.central.publishing.maven.plugin.version>0.5.0</sonatype.central.publishing.maven.plugin.version>
         <maven.release.plugin.version>2.5.3</maven.release.plugin.version>
-        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.javadoc.skip>false</maven.javadoc.skip>
         <maven.deploy.skip>false</maven.deploy.skip>
         <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
 
@@ -114,6 +114,8 @@
         <aerospike.version>6.1.7</aerospike.version>
         <testcontainer.version>1.16.2</testcontainer.version>
         <junit.testcontainer.version>1.0.10</junit.testcontainer.version>
+        <lombok.maven.version>1.18.20.0</lombok.maven.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Sonar properties -->
         <sonar.projectKey>PhonePe_Magazine</sonar.projectKey>
@@ -321,6 +323,24 @@
                     <excludes>
                     </excludes>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok-maven-plugin</artifactId>
+                <version>${lombok.maven.version}</version>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>delombok</goal>
+                        </goals>
+                        <configuration>
+                            <addOutputDirectory>false</addOutputDirectory>
+                            <sourceDirectory>src/main/java</sourceDirectory>
+                            <encoding>${project.build.sourceEncoding}</encoding>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
