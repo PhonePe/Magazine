@@ -98,7 +98,7 @@
         <maven.surefire.plugin.version>3.0.0-M8</maven.surefire.plugin.version>
         <sonatype.central.publishing.maven.plugin.version>0.5.0</sonatype.central.publishing.maven.plugin.version>
         <maven.release.plugin.version>2.5.3</maven.release.plugin.version>
-        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.javadoc.skip>false</maven.javadoc.skip>
         <maven.deploy.skip>false</maven.deploy.skip>
         <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
 
@@ -321,6 +321,23 @@
                     <excludes>
                     </excludes>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok-maven-plugin</artifactId>
+                <version>1.18.20.0</version>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>delombok</goal>
+                        </goals>
+                        <configuration>
+                            <addOutputDirectory>false</addOutputDirectory>
+                            <sourceDirectory>src/main/java</sourceDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
