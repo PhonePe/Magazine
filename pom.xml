@@ -8,6 +8,14 @@
     <url>https://github.com/PhonePe/magazine</url>
     <description>Distributed Persistent Queue</description>
     <inceptionYear>2025</inceptionYear>
+    <name>Magazine</name>
+
+    <scm>
+        <connection>scm:git:https://github.com/PhonePe/Magazine.git</connection>
+        <developerConnection>scm:git:https://github.com/PhonePe/Magazine.git</developerConnection>
+        <tag>HEAD</tag>
+        <url>https://github.com/PhonePe/Magazine.git</url>
+    </scm>
 
     <licenses>
         <license>
