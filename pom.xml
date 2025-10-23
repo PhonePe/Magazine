@@ -65,12 +65,12 @@
 
     <issueManagement>
         <system>GitHub Issues</system>
-        <url>https://github.com/PhonePe/magzine/issues</url>
+        <url>https://github.com/PhonePe/Magazine/issues</url>
     </issueManagement>
 
     <ciManagement>
         <system>Travis CI</system>
-        <url>https://travis-ci.org/PhonePe/magazine</url>
+        <url>https://travis-ci.org/PhonePe/Magazine</url>
     </ciManagement>
 
     <distributionManagement>
@@ -244,9 +244,7 @@
                 <version>${maven.javadoc.plugin.version}</version>
                 <configuration>
                     <source>${jdk.source.version}</source>
-                    <sourcepath>${project.basedir}/delombok</sourcepath>
-                    <skip>false</skip>
-                    <doclint>none</doclint>
+                    <sourcepath>${project.build.directory}/delomboked</sourcepath>
                 </configuration>
                 <executions>
                     <execution>
@@ -254,6 +252,7 @@
                         <goals>
                             <goal>jar</goal>
                         </goals>
+                        <phase>package</phase>
                     </execution>
                 </executions>
             </plugin>
@@ -334,13 +333,13 @@
                         <goals>
                             <goal>delombok</goal>
                         </goals>
-                        <configuration>
-                            <addOutputDirectory>false</addOutputDirectory>
-                            <sourceDirectory>src/main/java</sourceDirectory>
-                            <encoding>${project.build.sourceEncoding}</encoding>
-                        </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <addOutputDirectory>false</addOutputDirectory>
+                    <sourceDirectory>${project.basedir}/src/main/java</sourceDirectory>
+                    <outputDirectory>${project.build.directory}/delomboked</outputDirectory>
+                </configuration>
             </plugin>
         </plugins>
     </build>
