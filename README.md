@@ -153,23 +153,6 @@ Full documentation is available in the [`docs/`](docs/) directory:
 
 ![magazine](https://github.com/user-attachments/assets/e758d54f-c61f-4b54-bc6f-431ae502258a)
 
-```mermaid
-flowchart TD
-    A0["Magazine"]
-    A1["MagazineManager"]
-    A2["BaseMagazineStorage / Storage Strategy"]
-    A3["MagazineData"]
-    A4["MetaData (Pointers & Counters)"]
-    A5["Sharding"]
-    A6["Concurrency Control & Deduplication"]
-    A1 -- "Manages instances of" --> A0
-    A0 -- "Delegates operations to" --> A2
-    A2 -- "Returns/Accepts" --> A3
-    A2 -- "Manages state using" --> A4
-    A2 -- "Implements strategy" --> A5
-    A2 -- "Implements strategy" --> A6
-```
-
 ## Contributing
 
 We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a pull request.
