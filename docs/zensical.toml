@@ -1,0 +1,88 @@
+[project]
+site_name = "Magazine"
+site_url = "https://phonepe.github.io/Magazine"
+repo_url = "https://github.com/PhonePe/Magazine"
+copyright = "Copyright &copy; 2025-2026 PhonePe India Pvt. Ltd."
+
+nav = [
+  {"Home" = "index.md"},
+  {"Getting Started" = "getting-started.md"},
+  {"Usage" = "usage.md"},
+  {"Concepts" = [
+    {"API Reference" = "concepts/api-reference.md"},
+    {"Defaults & Configuration" = "concepts/defaults.md"},
+    {"Error Codes" = "concepts/error-codes.md"}
+  ]},
+  {"Storage Backends" = [
+    {"Aerospike" = "backends/aerospike.md"},
+    {"HBase" = "backends/hbase.md"}
+  ]}
+]
+
+[project.theme]
+features = [
+  "navigation.tracking",
+  "navigation.path",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.expand",
+  "navigation.top",
+  "toc.follow",
+  "content.code.copy",
+  "content.code.annotate",
+  "search.suggest",
+  "search.highlight",
+  "search.share"
+]
+
+[[project.theme.palette]]
+media  = "(prefers-color-scheme: light)"
+scheme = "default"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-7"
+name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media  = "(prefers-color-scheme)"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-auto"
+name = "Switch to light mode"
+
+[[project.theme.palette]]
+media  = "(prefers-color-scheme: dark)"
+scheme = "slate"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-4"
+name = "Switch to system preference"
+
+[project.plugins.glightbox]
+
+[project.plugins.awesome-pages]
+
+[project.markdown_extensions.toc]
+permalink = true
+
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions."pymdownx.details"]
+
+[project.markdown_extensions."pymdownx.superfences"]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
+
+[project.markdown_extensions."pymdownx.tabbed"]
+alternate_style = true
+
+[project.markdown_extensions."pymdownx.emoji"]
+emoji_index     = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"

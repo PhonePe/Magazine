@@ -1,39 +1,41 @@
-## Magazine
+# Magazine
 
-The Magazine Java library streamlines the management of homogenous data that needs to be persisted for a duration and consumed on demand.  In many applications, we encounter situations where we need to persist a collection of similar data objects, and then retrieve and utilize them on demand.  This pattern necessitates a robust mechanism for loading the data into memory, ejecting or "firing" it when it's no longer immediately needed, and efficiently reloading it when required again.
+> A distributed persistent queue for homogeneous data management in Java.
 
-Inspired by the mechanics of a rifle magazine, this library provides a simple and intuitive way to load and "fire" data, leveraging a user-configurable storage solution for persistence.  This allows developers to choose the most appropriate storage mechanism for their specific needs, whether it's an in-memory cache, a local file, or a more sophisticated database.  Furthermore, a Magazine Manager component enables applications to orchestrate multiple magazines, each potentially holding different types of data, all within a unified framework.
+[![Maven Central](https://img.shields.io/maven-central/v/com.phonepe/magazine.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22com.phonepe%22%20AND%20a:%22magazine%22)
+[![Build](https://github.com/PhonePe/Magazine/actions/workflows/maven.yml/badge.svg)](https://github.com/PhonePe/Magazine/actions/workflows/maven.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Java](https://img.shields.io/badge/Java-17%2B-blue)](https://openjdk.org/projects/jdk/17/)
 
-## Provided Features 
+## Overview
 
-- Homogenous Data Management: Simplifies handling collections of similar data objects for a specific duration.
-- Loading Data: Provides a mechanism to load data into a distributed persistent queue.
-- Firing Data: Enables retrieval of loaded data from a distributed persistent queue.
-- Magazine Management: Facilitates the management of multiple magazines, potentially holding different data types.
-- Reloading Data: Offers the ability to reload data into a magazine, especially if it was previously "fired."
+Magazine is a Java library that streamlines the management of homogeneous data requiring persistence for a duration and on-demand consumption. Inspired by the mechanics of a rifle magazine, it provides a simple and intuitive API to **load**, **fire**, and **reload** data, backed by a pluggable, distributed storage layer.
 
-## Tutorials 
+```mermaid
+flowchart TD
+    A1["MagazineManager"] -- "Manages instances of" --> A0["Magazine‹T›"]
+    A0 -- "Delegates operations to" --> A2["BaseMagazineStorage‹T›"]
+    A2 -- "Returns / Accepts" --> A3["MagazineData‹T›"]
+    A2 -- "Manages state using" --> A4["MetaData"]
+    A2 -- "Implements" --> A5["Sharding"]
+    A2 -- "Implements" --> A6["Concurrency Control & De-duplication"]
+```
 
-## Chapters
+## Features
 
-1. [Magazine
-   ](tutorials/magazine.md)
-2. [MagazineData
-   ](tutorials/magazinedata.md)
-3. [MagazineManager
-   ](tutorials/magazinemanager.md)
-4. [BaseMagazineStorage / Storage Strategy
-   ](tutorials/base_magazine_storage__storage_strategy.md)
-5. [MetaData (Pointers & Counters)
-   ](tutorials/metadata_pointers_counters.md)
-6. [Concurrency Control & Deduplication
-   ](tutorials/concurrency_control__deduplication.md)
-7. [Sharding
-   ](tutorials/sharding.md)
+| Feature | Description |
+|---|---|
+| **Load / Fire / Reload** | Queue-like semantics with pointer-based reads |
+| **Sharding** | Configurable shard count for horizontal throughput |
+| **De-duplication** | Optional distributed lock-based de-dup on write |
+| **Pluggable Backends** | Aerospike (production-ready), HBase (planned) |
+| **Magazine Manager** | Orchestrate multiple heterogeneous magazines |
 
-## Usage
+## Quick Start
 
-#### Add Maven Dependency
+### 1. Add Dependency
+
+**Maven**
 
 ```xml
 <dependency>
@@ -41,66 +43,111 @@ Inspired by the mechanics of a rifle magazine, this library provides a simple an
     <artifactId>magazine</artifactId>
     <version>1.0.0</version>
 </dependency>
-
 ```
 
-#### Create Magazine Manager
+**Gradle**
+
+```groovy
+implementation 'com.phonepe:magazine:1.0.0'
+```
+
+### 2. Create a Magazine (Aerospike Backend)
+
 ```java
-MagazineManager magazineManager = new MagazineManager(CLIENT_ID);
+import com.aerospike.client.AerospikeClient;
+import com.phonepe.magazine.*;
+import com.phonepe.magazine.impl.aerospike.*;
+import com.phonepe.magazine.scope.MagazineScope;
+
+// Connect to Aerospike
+IAerospikeClient client = new AerospikeClient("localhost", 3000);
+
+// Configure storage
+AerospikeStorageConfig config = AerospikeStorageConfig.builder()
+        .namespace("test")
+        .dataSetName("magazine_data")
+        .metaSetName("magazine_meta")
+        .shards(64)
+        .recordTtl(30 * 24 * 60 * 60)      // 30 days
+        .metaDataTtl(2 * 30 * 24 * 60 * 60) // 60 days
+        .build();
+
+// Build storage
+AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
+        .aerospikeClient(client)
+        .storageConfig(config)
+        .enableDeDupe(true)
+        .farmId("dc1")
+        .clazz(String.class)
+        .clientId("my-service")
+        .scope(MagazineScope.LOCAL)
+        .build();
+
+// Create magazine
+Magazine<String> magazine = Magazine.<String>builder()
+        .baseMagazineStorage(storage)
+        .magazineIdentifier("notifications")
+        .build();
 ```
 
-## Manage Magazine
+### 3. Use the Magazine
 
-Every Magazine is identified by a unique Id. When dealing with multiple magazines, this unique Id is used to carry out operations on a specific magazine. Magazine manager acts as a facade when dealing with multiple magazines. The restriction of data homogeneity is limited to a magazine, however, magazine manager can manage magazines of heterogeneous nature.
-
-Following functionalities are possible in the magazine.
-
-
-**`load(String magazineIdentifier, T data)`** \
- Used to store data into specific magazine, throws exception when the data load is failed datastore
-
-**`T fire(String magazineIdentifier)`** \
-Method to get the loaded data from the magazine. throws exception when the data is not present / failed to fire from below datastore.
-
-**`reload(String magazineIdentifier, T data)`** \
- To reload data into magazine, if missed by fire(from magazine).
-
-**`Map<String, Metadata> getMetaData(String magazineIdentifier)`** \
-method to get the metadata of the magazine i.e to get the number of loaded or fired, pointers and counters.
-
-To manage multiple magazines of different type, there is a magazine manager which supports dynamic addition/deletion of magazines in the current magazine map.
-
-**`delete(MagazineData<T> magazineData) `**\
-Method to delete the provided MagazineData from the magazine.
-
-**`peek(String magzineId, Map<Integer, Set<Long>> shardPointersMap)`**\
-Method is used to Peek data from specific shards and pointers within the magazine. It accepts magazine identifiers as string
-and a map where keys are shard identifiers and values are sets of pointers to peek from
-
-
-## Implementation
-**`Java`**
 ```java
+// Load data
+magazine.load("Hello, Magazine!");
 
-//To Refresh Magazines
-public static void refreshMagazines() {
-        List<Magazine<?>> magazines;  //Create List of Magazines
-        magazineManager.refresh(magazines);  //Refresh magazines
-}
- 
-//Fire (from magazine)
-magazineManager.getMagazine(MAGAZINE_IDENTIFIER, String.class).fire()
-                    .orElseThrow(//Any Exception)
- 
-//Load (to magazine)
-magazineManager.getMagazine(MAGAZINE_IDENTIFIER, String.class).load(data);
- 
-//Reload (to magazine)      
-magazineManager.getMagazine(MAGAZINE_IDENTIFIER, String.class).reload(data);
- 
-//Get MetaData (of magazine)
-magazineManager.getMagazine(MAGAZINE_IDENTIFIER, String.class).getMetaData();
+// Fire (consume) next item
+MagazineData<String> fired = magazine.fire();
+System.out.println(fired.getData()); // "Hello, Magazine!"
+
+// Reload (re-enqueue without incrementing load counter)
+magazine.reload("Hello, Magazine!");
+
+// Delete a specific record
+magazine.delete(fired);
+
+// Get metadata (counters & pointers per shard)
+Map<String, MetaData> meta = magazine.getMetaData();
+
+// Peek at specific shard/pointer combinations
+Map<Integer, Set<Long>> shardPointers = Map.of(0, Set.of(1L, 2L));
+Set<MagazineData<String>> peeked = magazine.peek(shardPointers);
 ```
+
+### 4. Manage Multiple Magazines
+
+```java
+MagazineManager manager = new MagazineManager("my-service");
+manager.refresh(List.of(magazine));
+
+// Retrieve by identifier
+Magazine<String> m = manager.getMagazine("notifications");
+m.fire();
+```
+
+## API Overview
+
+| Class | Method | Description |
+|---|---|---|
+| `Magazine<T>` | `load(T data)` | Enqueue data |
+| | `fire()` | Dequeue next item |
+| | `reload(T data)` | Re-enqueue (no load-counter increment) |
+| | `delete(MagazineData<T>)` | Remove a specific record |
+| | `getMetaData()` | Retrieve per-shard counters & pointers |
+| | `peek(Map<Integer,Set<Long>>)` | Read without consuming |
+| `MagazineManager` | `refresh(List<Magazine<?>>)` | Register / update magazines |
+| | `getMagazine(String)` | Retrieve magazine by identifier |
+
+## Documentation
+
+Full documentation is available in the [`docs/`](docs/) directory:
+
+- [Getting Started](docs/docs/getting-started.md)
+- [Usage Guide](docs/docs/usage.md)
+- [API Reference](docs/docs/concepts/api-reference.md)
+- [Defaults & Configuration](docs/docs/concepts/defaults.md)
+- [Error Codes](docs/docs/concepts/error-codes.md)
+- **Backends:** [Aerospike](docs/docs/backends/aerospike.md) · [HBase](docs/docs/backends/hbase.md)
 
 ## Architecture
 
@@ -108,20 +155,13 @@ magazineManager.getMagazine(MAGAZINE_IDENTIFIER, String.class).getMetaData();
 
 ```mermaid
 flowchart TD
-    A0["Magazine
-"]
-    A1["MagazineManager
-"]
-    A2["BaseMagazineStorage / Storage Strategy
-"]
-    A3["MagazineData
-"]
-    A4["MetaData (Pointers & Counters)
-"]
-    A5["Sharding
-"]
-    A6["Concurrency Control & Deduplication
-"]
+    A0["Magazine"]
+    A1["MagazineManager"]
+    A2["BaseMagazineStorage / Storage Strategy"]
+    A3["MagazineData"]
+    A4["MetaData (Pointers & Counters)"]
+    A5["Sharding"]
+    A6["Concurrency Control & Deduplication"]
     A1 -- "Manages instances of" --> A0
     A0 -- "Delegates operations to" --> A2
     A2 -- "Returns/Accepts" --> A3
@@ -129,3 +169,13 @@ flowchart TD
     A2 -- "Implements strategy" --> A5
     A2 -- "Implements strategy" --> A6
 ```
+
+## Contributing
+
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a pull request.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
+
+Copyright © 2025 PhonePe India Pvt. Ltd.
