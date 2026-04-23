@@ -31,3 +31,6 @@ replay_pid*
 /target/
 .project
 .settings/
+
+# Zensical docs build output
+docs/site/
