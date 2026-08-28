@@ -139,6 +139,21 @@ public class MagazineTest {
     }
 
     @Test
+    public void dedupeDisabledDoesNotInitializeLockManager() throws ExecutionException, RetryException {
+        AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("MAGAZINE_WITHOUT_DEDUPE")
+                .baseMagazineStorage(storage)
+                .build();
+
+        Assert.assertNull(storage.getLockManager());
+        Assert.assertNull(storage.getLockLevel());
+        Assert.assertTrue(magazine.load("DATA"));
+        Assert.assertTrue(magazine.load("DATA"));
+        Assert.assertEquals(2, collectMetaData(magazine.getMetaData()).getLoadCounter());
+    }
+
+    @Test
     public void magazinePeekTest() {
         Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
         magazine.load("DATA1");
@@ -281,6 +296,10 @@ public class MagazineTest {
     }
 
     private <T> BaseMagazineStorage<T> buildMagazineStorage(Class<T> clazz) {
+        return buildMagazineStorage(clazz, true);
+    }
+
+    private <T> AerospikeStorage<T> buildMagazineStorage(Class<T> clazz, boolean enableDeDupe) {
         return AerospikeStorage.<T>builder()
                 .clazz(clazz)
                 .storageConfig(AerospikeStorageConfig.builder()
@@ -290,7 +309,7 @@ public class MagazineTest {
                         .shards(16)
                         .build())
                 .aerospikeClient(aerospikeClient)
-                .enableDeDupe(true)
+                .enableDeDupe(enableDeDupe)
                 .clientId("CLIENT_ID")
                 .scope(MagazineScope.LOCAL)
                 .build();

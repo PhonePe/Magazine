@@ -56,8 +56,10 @@ import java.util.stream.IntStream;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+@Slf4j
 @Getter
 @EqualsAndHashCode(callSuper = true)
 public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
@@ -92,29 +94,36 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.metaSetName = CommonUtils.resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
         this.retryerFactory = new AerospikeRetryerFactory<>();
         this.activeShardsCache = initializeCache();
-        this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
-                LockBase.builder()
-                        .mode(LockMode.EXCLUSIVE)
-                        .lockStore(AerospikeStore.builder()
-                                .aerospikeClient(aerospikeClient)
-                                .namespace(namespace)
-                                .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
-                                .build())
-                        .build());
-        this.lockLevel = CommonUtils.resolveLockLevel(scope);
-        lockManager.initialize();
+        if (enableDeDupe) {
+            this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
+                    LockBase.builder()
+                            .mode(LockMode.EXCLUSIVE)
+                            .lockStore(AerospikeStore.builder()
+                                    .aerospikeClient(aerospikeClient)
+                                    .namespace(namespace)
+                                    .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
+                                    .build())
+                            .build());
+            this.lockLevel = CommonUtils.resolveLockLevel(scope);
+            lockManager.initialize();
+        } else {
+            this.lockManager = null;
+            this.lockLevel = null;
+        }
     }
 
     @Override
     public boolean load(final String magazineIdentifier,
             final T data) {
         validateDataType(data);
-        final Lock lock = lockManager.getLockInstance(
-                String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
+        Lock lock = null;
+        boolean lockAcquired = false;
         try {
-            // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
+                lock = lockManager.getLockInstance(
+                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
                 lockManager.tryAcquireLock(lock); // Exception is thrown if acquiring lock fails.
+                lockAcquired = true;
             }
             if (!isEnableDeDupe() || !alreadyExists(magazineIdentifier, data)) {
                 final Integer selectedShard = selectShard();
@@ -133,7 +142,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
-            lockManager.releaseLock(lock);
+            releaseLock(lock, lockAcquired);
         }
     }
 
@@ -141,12 +150,14 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     public boolean reload(final String magazineIdentifier,
             final T data) {
         validateDataType(data);
-        final Lock lock = lockManager.getLockInstance(
-                String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
+        Lock lock = null;
+        boolean lockAcquired = false;
         try {
-            // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
+                lock = lockManager.getLockInstance(
+                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
                 lockManager.tryAcquireLock(lock);
+                lockAcquired = true;
             }
 
             final Integer selectedShard = selectShard();
@@ -160,7 +171,18 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
+            releaseLock(lock, lockAcquired);
+        }
+    }
+
+    private void releaseLock(final Lock lock, final boolean lockAcquired) {
+        if (!lockAcquired) {
+            return;
+        }
+        try {
             lockManager.releaseLock(lock);
+        } catch (Exception e) {
+            log.warn("Error releasing deduplication lock for lock id {}", lock.getLockId(), e);
         }
     }
 
