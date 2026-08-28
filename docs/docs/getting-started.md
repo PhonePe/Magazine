@@ -3,9 +3,7 @@
 ## Requirements
 
 - **Java 17** or later.
-- One of the supported storage backends:
-    - An **Aerospike** cluster reachable from application nodes.
-    - An **HBase** cluster (planned — not yet implemented).
+- An **Aerospike** cluster reachable from application nodes.
 - **Docker** (for running integration tests via Testcontainers).
 
 ## Add Dependency
@@ -106,7 +104,6 @@ meta.forEach((shard, m) ->
 
 ## What's Next
 
-- [Usage](usage.md) — all operations with tabbed backend examples.
+- [Usage](usage.md) — examples for all operations.
 - [API Reference](concepts/api-reference.md) — full method documentation.
-- [Storage Backends](backends/aerospike.md) — Aerospike configuration deep-dive.
-
+- [Storage Backend](backends/aerospike.md) — Aerospike configuration deep-dive.

@@ -13,9 +13,8 @@ nav = [
     {"Defaults & Configuration" = "concepts/defaults.md"},
     {"Error Codes" = "concepts/error-codes.md"}
   ]},
-  {"Storage Backends" = [
-    {"Aerospike" = "backends/aerospike.md"},
-    {"HBase" = "backends/hbase.md"}
+  {"Storage Backend" = [
+    {"Aerospike" = "backends/aerospike.md"}
   ]}
 ]
 

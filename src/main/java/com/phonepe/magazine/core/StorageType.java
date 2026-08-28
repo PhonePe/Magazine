@@ -27,16 +27,9 @@ public enum StorageType {
         public <T> T accept(StorageTypeVisitor<T> visitor) throws ExecutionException, RetryException {
             return visitor.visitAerospike();
         }
-    },
-    HBASE(StorageType.HBASE_TEXT) {
-        @Override
-        public <T> T accept(StorageTypeVisitor<T> visitor) throws ExecutionException, RetryException {
-            return visitor.visitHBase();
-        }
     };
 
     public static final String AEROSPIKE_TEXT = "AEROSPIKE";
-    public static final String HBASE_TEXT = "HBASE";
 
     @Getter
     private final String value;
