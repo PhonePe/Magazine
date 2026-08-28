@@ -69,8 +69,8 @@ Abstract base class for storage implementations. Aerospike is currently the only
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `type` | `StorageType` | Backend type. Currently `AEROSPIKE`. |
-| `recordTtl` | `int` | TTL in seconds for data records. |
-| `metaDataTtl` | `int` | TTL in seconds for metadata records. |
+| `recordTtl` | `int` | TTL in seconds for data records. Must be positive. |
+| `metaDataTtl` | `int` | TTL in seconds for metadata records. Must be greater than `recordTtl`. |
 | `farmId` | `String` | Data centre / farm identifier. |
 | `enableDeDupe` | `boolean` | Whether to enable write de-duplication. |
 | `shards` | `int` | Number of shards. Minimum is 1. |

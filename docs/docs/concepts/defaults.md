@@ -11,8 +11,8 @@ Configuration object passed to `AerospikeStorage.builder().storageConfig(...)`.
 | `namespace` | `String` | *(required)* | Aerospike namespace. Must already exist on the cluster. |
 | `metaSetName` | `String` | *(required)* | Set name for metadata records (pointers, counters, shard info). |
 | `dataSetName` | `String` | *(required)* | Set name for data records. |
-| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. Minimum: `-2` (use server default / never expire). |
-| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. Minimum: `-2`. |
+| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. Must be positive. |
+| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. Must be greater than `recordTtl`. |
 | `shards` | `int` | `64` | Number of shards in the magazine. Minimum: `1`. |
 
 ## `AerospikeStorage` Builder
@@ -35,7 +35,7 @@ These constants are defined in `com.phonepe.magazine.common.Constants` and are *
 |----------|-------|-------------|
 | `MAX_RETRIES` | `5` | Maximum retry attempts for Aerospike operations. |
 | `DELAY_BETWEEN_RETRIES` | `10` ms | Fixed wait between retry attempts. |
-| `MIN_SHARDS` | `1` | Minimum shard count (applied when `shards < 1`). |
+| `MIN_SHARDS` | `1` | Minimum accepted shard count. |
 | `SHARDS_DEFAULT_TTL` | `31536000` (1 year) | TTL for the shard metadata record. |
 | `DEFAULT_REFRESH` | `5` | Default cache refresh interval (seconds) for the active shards cache. |
 | `DEFAULT_MAX_ELEMENTS` | `1024` | Maximum elements in the active shards cache. |
@@ -74,5 +74,4 @@ On magazine construction, the library validates shard configuration:
 |------|-------------|
 | Cannot decrease shard count | Throws `MagazineException` with `INVALID_SHARDS` |
 | Cannot convert unsharded (≤ 1) to sharded (> 1) | Throws `MagazineException` with `INVALID_SHARDS` |
-| Minimum shard count | Automatically set to `1` if configured below `1` |
-
+| Minimum shard count | Values below `1` throw `MagazineException` with `INVALID_SHARDS` |

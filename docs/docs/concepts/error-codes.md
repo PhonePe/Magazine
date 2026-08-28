@@ -31,6 +31,7 @@ public class MagazineException extends RuntimeException {
 | `ACTION_DENIED_PARALLEL_ATTEMPT` | A concurrent operation was attempted while a distributed lock was held (de-duplication conflict). |
 | `NOT_IMPLEMENTED` | The requested operation is not supported, such as `GLOBAL` scope. |
 | `INVALID_SHARDS` | Invalid shard configuration: cannot decrease shards, or cannot convert unsharded to sharded. |
+| `INVALID_CONFIGURATION` | A required storage or magazine setting is missing or invalid. |
 | `DATA_TYPE_MISMATCH` | The data type does not match the expected type for the magazine. |
 
 ## Error Messages

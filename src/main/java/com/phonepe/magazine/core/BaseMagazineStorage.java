@@ -16,12 +16,14 @@
 
 package com.phonepe.magazine.core;
 
-import com.phonepe.magazine.common.Constants;
 import com.phonepe.magazine.common.MagazineData;
 import com.phonepe.magazine.common.MetaData;
+import com.phonepe.magazine.exception.ErrorCode;
+import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.scope.MagazineScope;
 import com.phonepe.magazine.util.CommonUtils;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -50,14 +52,13 @@ public abstract class BaseMagazineStorage<T> {
             final int shards,
             final String clientId,
             final MagazineScope scope) {
+        validate(type, recordTtl, metaDataTtl, farmId, shards, clientId, scope);
         this.type = type;
         this.recordTtl = recordTtl;
         this.metaDataTtl = metaDataTtl;
         this.enableDeDupe = enableDeDupe;
         this.farmId = farmId;
-        this.shards = shards < 1
-                ? Constants.MIN_SHARDS
-                : shards;
+        this.shards = shards;
         this.clientId = clientId;
         this.scope = scope;
 
@@ -123,4 +124,44 @@ public abstract class BaseMagazineStorage<T> {
             final String magazineIdentifier,
             final Map<Integer, Set<Long>> shardPointersMap
     );
+
+    private static void validate(final StorageType type,
+            final int recordTtl,
+            final int metaDataTtl,
+            final String farmId,
+            final int shards,
+            final String clientId,
+            final MagazineScope scope) {
+        if (Objects.isNull(type)) {
+            throw invalidConfiguration("Storage type is required.");
+        }
+        if (recordTtl <= 0) {
+            throw invalidConfiguration("Record TTL must be positive.");
+        }
+        if (metaDataTtl <= recordTtl) {
+            throw invalidConfiguration("Metadata TTL must be greater than record TTL.");
+        }
+        if (shards < 1) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.INVALID_SHARDS)
+                    .message("Shard count must be at least 1.")
+                    .build();
+        }
+        if (Objects.isNull(farmId) || farmId.isBlank()) {
+            throw invalidConfiguration("Farm ID is required.");
+        }
+        if (Objects.isNull(clientId) || clientId.isBlank()) {
+            throw invalidConfiguration("Client ID is required.");
+        }
+        if (Objects.isNull(scope)) {
+            throw invalidConfiguration("Magazine scope is required.");
+        }
+    }
+
+    private static MagazineException invalidConfiguration(final String message) {
+        return MagazineException.builder()
+                .errorCode(ErrorCode.INVALID_CONFIGURATION)
+                .message(message)
+                .build();
+    }
 }

@@ -30,6 +30,7 @@ import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorage;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import lombok.Builder;
@@ -44,6 +45,12 @@ public class Magazine<T> {
     @Builder
     public Magazine(final BaseMagazineStorage<T> baseMagazineStorage,
             final String magazineIdentifier) throws ExecutionException, RetryException {
+        if (Objects.isNull(baseMagazineStorage)) {
+            throw invalidConfiguration("Magazine storage is required.");
+        }
+        if (Objects.isNull(magazineIdentifier) || magazineIdentifier.isBlank()) {
+            throw invalidConfiguration("Magazine identifier is required.");
+        }
         this.magazineIdentifier = magazineIdentifier;
         this.baseMagazineStorage = baseMagazineStorage;
         validateStorage(baseMagazineStorage);
@@ -127,7 +134,7 @@ public class Magazine<T> {
                                                                 String.join(Constants.KEY_DELIMITER, magazineIdentifier,
                                                                         Constants.SHARDS_BIN))));
 
-                        if (magazineRecord == null) {
+                        if (Objects.isNull(magazineRecord)) {
                             final WritePolicy writePolicy = new WritePolicy(storage.getAerospikeClient()
                                     .getWritePolicyDefault());
                             writePolicy.expiration = Constants.SHARDS_DEFAULT_TTL;
@@ -163,5 +170,12 @@ public class Magazine<T> {
                         return true;
                     }
                 });
+    }
+
+    private static MagazineException invalidConfiguration(final String message) {
+        return MagazineException.builder()
+                .errorCode(ErrorCode.INVALID_CONFIGURATION)
+                .message(message)
+                .build();
     }
 }

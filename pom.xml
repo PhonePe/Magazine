@@ -107,7 +107,6 @@
         <apache.commons.version>3.20.0</apache.commons.version>
         <guava.retrying.version>2.0.0</guava.retrying.version>
         <guava.version>33.7.1-jre</guava.version>
-        <validation.api.version>2.0.1.Final</validation.api.version>
         <slf4j.version>1.7.36</slf4j.version>
         <junit.version>4.13.2</junit.version>
         <DLM.version>1.0.2</DLM.version>
@@ -161,11 +160,6 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>${caffeine.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>javax.validation</groupId>
-            <artifactId>validation-api</artifactId>
-            <version>${validation.api.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
