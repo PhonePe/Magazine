@@ -29,7 +29,7 @@ public class MagazineException extends RuntimeException {
 | `NOTHING_TO_FIRE` | There is no data available to fire (all items have been consumed). |
 | `MAGAZINE_NOT_FOUND` | `MagazineManager.getMagazine()` was called with an identifier that has not been registered via `refresh()`. |
 | `ACTION_DENIED_PARALLEL_ATTEMPT` | A concurrent operation was attempted while a distributed lock was held (de-duplication conflict). |
-| `NOT_IMPLEMENTED` | The requested operation is not supported (e.g. `GLOBAL` scope, or HBase backend methods). |
+| `NOT_IMPLEMENTED` | The requested operation is not supported, such as `GLOBAL` scope. |
 | `INVALID_SHARDS` | Invalid shard configuration: cannot decrease shards, or cannot convert unsharded to sharded. |
 | `DATA_TYPE_MISMATCH` | The data type does not match the expected type for the magazine. |
 
@@ -68,4 +68,3 @@ try {
 ```
 
 If the thrown exception is already a `MagazineException` (or its cause is), `propagate()` returns it directly. Otherwise, it wraps the exception with `INTERNAL_ERROR`.
-

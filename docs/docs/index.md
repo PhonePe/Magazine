@@ -16,7 +16,7 @@ Inspired by the mechanics of a rifle magazine, the library offers an intuitive A
 
 ## Key Features
 
-- **Pluggable storage backends** — Aerospike (production-ready), HBase (planned), or bring your own.
+- **Storage abstraction** — Aerospike is currently supported, and the storage contract can be extended with additional implementations.
 - **Horizontal scaling via sharding** — configurable shard count (default: 64).
 - **Distributed locking** — prevents concurrent duplicate writes when de-duplication is enabled.
 - **Automatic retries** — configurable retry policy for transient backend failures.
@@ -65,10 +65,7 @@ graph TD
     subgraph ListOfMagazines[List of Magazines]
         subgraph Magazine1[Magazine]
             direction LR
-            subgraph StorageType[Storage Type]
-                Aerospike[(Aerospike)]
-                HBase[(HBase)]
-            end
+            Aerospike[(Aerospike Storage)]
             subgraph Actions[Actions]
                 LOAD[Load]
                 FIRE[Fire]
@@ -99,14 +96,12 @@ graph TD
 | **`Magazine<T>`** | Type-safe wrapper providing `load`, `fire`, `reload`, `delete`, `peek`, `getMetaData`. |
 | **`BaseMagazineStorage<T>`** | Abstract storage contract; implemented by each backend. |
 | **`AerospikeStorage<T>`** | Production-ready Aerospike backend with sharding, retries, and distributed locks. |
-| **`HBaseStorage<T>`** | Placeholder for future HBase backend. |
 | **`MagazineData<T>`** | Envelope carrying the data payload, fire pointer, shard, and magazine identifier. |
 | **`MetaData`** | Per-shard counters (`loadCounter`, `fireCounter`) and pointers (`loadPointer`, `firePointer`). |
 
 ## What to Read Next
 
 - [Getting Started](getting-started.md) — dependency setup, prerequisites, building locally.
-- [Usage](usage.md) — complete examples for every operation, tabbed by backend.
+- [Usage](usage.md) — complete examples for every operation.
 - [Concepts](concepts/api-reference.md) — API reference, defaults, error codes.
-- [Storage Backends](backends/aerospike.md) — Aerospike and HBase internals.
-
+- [Storage Backend](backends/aerospike.md) — Aerospike configuration and internals.

@@ -62,13 +62,13 @@ MagazineManager manager = new MagazineManager("my-client-id");
 
 ## `BaseMagazineStorage<T>`
 
-Abstract base class for all storage backends. Extend this to implement a custom backend.
+Abstract base class for storage implementations. Aerospike is currently the only supported backend; additional backends require implementing this contract and integrating their validation.
 
 ### Constructor Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `type` | `StorageType` | `AEROSPIKE` or `HBASE`. |
+| `type` | `StorageType` | Backend type. Currently `AEROSPIKE`. |
 | `recordTtl` | `int` | TTL in seconds for data records. |
 | `metaDataTtl` | `int` | TTL in seconds for metadata records. |
 | `farmId` | `String` | Data centre / farm identifier. |
@@ -140,7 +140,6 @@ Enum for supported backend types. Uses the Visitor pattern.
 | Value | Description |
 |-------|-------------|
 | `AEROSPIKE` | Aerospike backend. |
-| `HBASE` | HBase backend (planned). |
 
 ---
 
@@ -149,4 +148,3 @@ Enum for supported backend types. Uses the Visitor pattern.
 - `MagazineManager` uses a `HashMap` internally — it is **not thread-safe** for concurrent `refresh()` and `getMagazine()` calls. Synchronise externally if needed.
 - `Magazine<T>` delegates all operations to the storage backend. Thread safety depends on the backend implementation.
 - `AerospikeStorage<T>` is thread-safe for all operations. Distributed locks ensure safe concurrent writes when de-duplication is enabled.
-

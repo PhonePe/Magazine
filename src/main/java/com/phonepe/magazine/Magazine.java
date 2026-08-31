@@ -162,11 +162,6 @@ public class Magazine<T> {
 
                         return true;
                     }
-
-                    @Override
-                    public Boolean visitHBase() {
-                        throw new UnsupportedOperationException();
-                    }
                 });
     }
 }

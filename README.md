@@ -28,7 +28,7 @@ flowchart TD
 | **Load / Fire / Reload** | Queue-like semantics with pointer-based reads |
 | **Sharding** | Configurable shard count for horizontal throughput |
 | **De-duplication** | Optional distributed lock-based de-dup on write |
-| **Pluggable Backends** | Aerospike (production-ready), HBase (planned) |
+| **Storage abstraction** | Aerospike implementation with an extensible storage contract |
 | **Magazine Manager** | Orchestrate multiple heterogeneous magazines |
 
 ## Quick Start
@@ -147,7 +147,7 @@ Full documentation is available in the [`docs/`](docs/) directory:
 - [API Reference](docs/docs/concepts/api-reference.md)
 - [Defaults & Configuration](docs/docs/concepts/defaults.md)
 - [Error Codes](docs/docs/concepts/error-codes.md)
-- **Backends:** [Aerospike](docs/docs/backends/aerospike.md) · [HBase](docs/docs/backends/hbase.md)
+- **Backend:** [Aerospike](docs/docs/backends/aerospike.md)
 
 ## Architecture
 

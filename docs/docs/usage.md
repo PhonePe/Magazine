@@ -15,50 +15,33 @@ Every `Magazine<T>` instance exposes six operations:
 
 ## Creating a Magazine
 
-=== "Aerospike"
+```java
+IAerospikeClient client = new AerospikeClient("localhost", 3000);
 
-    ```java
-    IAerospikeClient client = new AerospikeClient("localhost", 3000);
+AerospikeStorageConfig config = AerospikeStorageConfig.builder()
+        .namespace("test")
+        .dataSetName("mag_data")
+        .metaSetName("mag_meta")
+        .shards(64)
+        .recordTtl(30 * 24 * 60 * 60)
+        .metaDataTtl(2 * 30 * 24 * 60 * 60)
+        .build();
 
-    AerospikeStorageConfig config = AerospikeStorageConfig.builder()
-            .namespace("test")
-            .dataSetName("mag_data")
-            .metaSetName("mag_meta")
-            .shards(64)
-            .recordTtl(30 * 24 * 60 * 60)
-            .metaDataTtl(2 * 30 * 24 * 60 * 60)
-            .build();
+AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
+        .aerospikeClient(client)
+        .storageConfig(config)
+        .enableDeDupe(true)
+        .farmId("dc1")
+        .clazz(String.class)
+        .clientId("my-service")
+        .scope(MagazineScope.LOCAL)
+        .build();
 
-    AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
-            .aerospikeClient(client)
-            .storageConfig(config)
-            .enableDeDupe(true)
-            .farmId("dc1")
-            .clazz(String.class)
-            .clientId("my-service")
-            .scope(MagazineScope.LOCAL)
-            .build();
-
-    Magazine<String> magazine = Magazine.<String>builder()
-            .baseMagazineStorage(storage)
-            .magazineIdentifier("orders")
-            .build();
-    ```
-
-=== "HBase (planned)"
-
-    ```java
-    // HBase backend is not yet implemented.
-    // All operations currently throw UnsupportedOperationException.
-    HBaseStorage<String> storage = new HBaseStorage<>(
-            recordTtl, metaDataTtl, farmId,
-            false, 1, clientId, MagazineScope.LOCAL);
-
-    Magazine<String> magazine = Magazine.<String>builder()
-            .baseMagazineStorage(storage)
-            .magazineIdentifier("orders")
-            .build();
-    ```
+Magazine<String> magazine = Magazine.<String>builder()
+        .baseMagazineStorage(storage)
+        .magazineIdentifier("orders")
+        .build();
+```
 
 ## Loading Data
 
@@ -266,4 +249,3 @@ long totalPending = meta.values().stream()
         .sum();
 System.out.println("Pending notifications: " + totalPending);
 ```
-

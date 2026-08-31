@@ -102,16 +102,17 @@
         <maven.deploy.skip>false</maven.deploy.skip>
         <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
 
-        <lombok.version>1.18.22</lombok.version>
-        <jackson.version>2.13.0</jackson.version>
+        <lombok.version>1.18.46</lombok.version>
         <mockito.version>4.3.1</mockito.version>
-        <apache.commons.version>3.11</apache.commons.version>
+        <apache.commons.version>3.20.0</apache.commons.version>
         <guava.retrying.version>2.0.0</guava.retrying.version>
-        <hibernate.validator.version>6.1.7.Final</hibernate.validator.version>
-        <junit.version>4.12</junit.version>
-        <DLM.version>1.0.0</DLM.version>
-        <caffeine.version>2.7.0</caffeine.version>
-        <aerospike.version>6.1.7</aerospike.version>
+        <guava.version>33.7.1-jre</guava.version>
+        <validation.api.version>2.0.1.Final</validation.api.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <junit.version>4.13.2</junit.version>
+        <DLM.version>1.0.2</DLM.version>
+        <caffeine.version>2.9.3</caffeine.version>
+        <aerospike.version>6.3.1</aerospike.version>
         <testcontainer.version>1.16.2</testcontainer.version>
         <junit.testcontainer.version>1.0.10</junit.testcontainer.version>
         <lombok.maven.version>1.18.20.0</lombok.maven.version>
@@ -127,10 +128,7 @@
         <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
         <sonar.language>java</sonar.language>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
-        <sonar.exclusions>
-            **/HBase*.java,
-            **/exception/*.java
-        </sonar.exclusions>
+        <sonar.exclusions>**/exception/*.java</sonar.exclusions>
     </properties>
 
     <dependencies>
@@ -138,16 +136,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-            <version>${jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.aerospike</groupId>
@@ -165,19 +153,35 @@
             <version>${guava.retrying.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${guava.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>${caffeine.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.hibernate.validator</groupId>
-            <artifactId>hibernate-validator</artifactId>
-            <version>${hibernate.validator.version}</version>
+            <groupId>javax.validation</groupId>
+            <artifactId>validation-api</artifactId>
+            <version>${validation.api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>com.phonepe</groupId>
             <artifactId>DLM</artifactId>
             <version>${DLM.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
