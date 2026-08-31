@@ -272,7 +272,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void configurationValidationTest() throws ExecutionException, RetryException {
+    public void configurationValidationTest() {
         assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () ->
                 Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID")

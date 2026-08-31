@@ -247,11 +247,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Record[] records = (Record[]) retryerFactory.getRetryer()
                     .call(() -> aerospikeClient.get(
                             aerospikeClient.getBatchPolicyDefault(),
-                            keyAndMagazineDataBuilderList.stream()
-                                    .map(Pair::getKey)
-                                    .collect(Collectors.toList())
-                                    .toArray(Key[]::new))
-                    );
+                             keyAndMagazineDataBuilderList.stream()
+                                     .map(Pair::getKey)
+                                     .toList()
+                                     .toArray(Key[]::new))
+                     );
 
             return IntStream.range(0, keyAndMagazineDataBuilderList.size())
                     .boxed()
