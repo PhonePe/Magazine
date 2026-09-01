@@ -34,9 +34,9 @@ These constants are defined in `com.phonepe.magazine.common.Constants` and are *
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MAX_RETRIES` | `5` | Maximum retry attempts for Aerospike operations. |
-| `DELAY_BETWEEN_RETRIES` | `10` ms | Fixed wait between retry attempts. |
+| `AEROSPIKE_RETRY_DELAY_MS` | `10` ms | Fixed wait between transient Aerospike retry attempts. |
 | `MIN_SHARDS` | `1` | Minimum accepted shard count. |
-| `SHARDS_DEFAULT_TTL` | `31536000` (1 year) | TTL for the shard metadata record. |
+| `SHARD_CONFIGURATION_TTL_SECONDS` | `157680000` (5 years) | Retention for the shard-configuration record. |
 | `DEFAULT_REFRESH` | `5` | Default cache refresh interval (seconds) for the active shards cache. |
 | `DEFAULT_MAX_ELEMENTS` | `1024` | Maximum elements in the active shards cache. |
 | `DLM_CLIENT_ID` | `"magazine"` | Client ID used for the internal `DistributedLockManager`. |
@@ -47,13 +47,13 @@ All Aerospike operations are wrapped in a `guava-retrying` retryer:
 
 | Setting | Standard Operations | Fire Operations |
 |---------|---------------------|-----------------|
-| Retry on | `AerospikeException` | `AerospikeException` or `null` result |
-| Max attempts | 5 | ∞ (never stop) — but exits immediately with `NOTHING_TO_FIRE` if no active shards |
-| Wait between attempts | 10 ms (fixed) | 10 ms (fixed) |
-| Block strategy | Thread sleep | Thread sleep |
+| Retry on | `AerospikeException` | `null` result (pointer hole) |
+| Max attempts | 5 | Continues while an active shard has unscanned pointers |
+| Wait between attempts | 10 ms (fixed) | None |
+| Block strategy | Thread sleep | None |
 
 !!! info "Fire retry behaviour"
-    The fire retryer uses `neverStop`, but this only applies when active shards exist and the selected record is null (e.g. expired data). If there is nothing to fire (no active shards), `fire()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately — it does **not** enter the retry loop.
+    If no deliverable record is found, `fire()` throws `MagazineException` with `NOTHING_TO_FIRE`. Missing pointers are skipped while `loadPointer > firePointer`, because later records may exist in the same shard. Once all cached active shards are exhausted, the call returns immediately.
 
 ## Set Name Resolution
 
@@ -75,3 +75,5 @@ On magazine construction, the library validates shard configuration:
 | Cannot decrease shard count | Throws `MagazineException` with `INVALID_SHARDS` |
 | Cannot convert unsharded (≤ 1) to sharded (> 1) | Throws `MagazineException` with `INVALID_SHARDS` |
 | Minimum shard count | Values below `1` throw `MagazineException` with `INVALID_SHARDS` |
+
+The shard-configuration record is retained for five years because it defines the persistent topology of a magazine. Recreating a magazine with an incompatible shard count before this record expires is rejected.

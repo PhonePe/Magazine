@@ -281,7 +281,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 });
     }
 
-    // Retry until the record is non-null or there is nothing to fire
+    // Retry until the record is non-null, the queue is empty, or the retry limit is reached.
     @SuppressWarnings("unchecked")
     private MagazineData<T> fireWithRetry(final String magazineIdentifier) {
         try {
@@ -312,10 +312,20 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                         .build();
                                 incrementFireCounter(magazineIdentifier, selectedShard);
                             }
+                        } else {
+                            suppressActiveShard(magazineIdentifier, selectedShard);
                         }
                         return magazineData;
                     });
         } catch (Exception e) {
+            if (isInterrupted(e)) {
+                Thread.currentThread().interrupt();
+                throw MagazineException.builder()
+                        .cause(e)
+                        .errorCode(ErrorCode.RETRIES_EXHAUSTED)
+                        .message(String.format(ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier))
+                        .build();
+            }
             throw handleException(e, ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier, null);
         }
     }
@@ -583,7 +593,27 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                                     && (metaData.getLoadPointer() > metaData.getFirePointer()));
                         })
                         .map(Map.Entry::getKey)
+                .toList());
+    }
+
+    private void suppressActiveShard(final String magazineIdentifier, final Integer shard) {
+        final String shardId = String.join(Constants.KEY_DELIMITER, Constants.SHARD_PREFIX,
+                String.valueOf(Objects.isNull(shard) ? 0 : shard));
+        activeShardsCache.synchronous().asMap().computeIfPresent(magazineIdentifier,
+                (key, activeShards) -> activeShards.stream()
+                        .filter(activeShard -> !shardId.equals(activeShard))
                         .toList());
+    }
+
+    private boolean isInterrupted(final Throwable throwable) {
+        Throwable cause = throwable;
+        while (Objects.nonNull(cause)) {
+            if (cause instanceof InterruptedException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private void validateDataType(final T data) {

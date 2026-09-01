@@ -104,11 +104,11 @@ flowchart TD
 1. Active shards are fetched from a Caffeine cache (refreshed every 5 seconds).
 2. A random active shard is selected.
 3. If `firePointer < loadPointer`, the fire pointer is incremented and the data record is read.
-4. If the record is null (e.g. expired), the retryer retries with another shard.
-5. The fire retryer runs **indefinitely** until a non-null result is found or a `NOTHING_TO_FIRE` exception is thrown.
+4. If the record is null (e.g. expired), the operation retries because later pointers may still exist in that shard.
+5. Scanning continues while an active shard has unscanned pointers. Once all cached active shards are exhausted, `NOTHING_TO_FIRE` is returned.
 
 !!! info "Fire retry behaviour"
-    The fire retryer uses `StopStrategies.neverStop()`, but only retries when active shards exist and the record read returns null (e.g. data expired). If there are no active shards, `getActiveShards()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately — no retry occurs.
+    If there are no active shards, `getActiveShards()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately. Only exhausted shards are removed from the current process-local cached value; a missing record does not imply that its shard is empty.
 
 ### Reload Operation
 
@@ -172,7 +172,7 @@ Set:  {farmId}_{metaSetName}
 
 | Bin | Type | Content |
 |-----|------|---------|
-| `SHARDS` | `Integer` | Configured shard count. TTL: 1 year. |
+| `SHARDS` | `Integer` | Configured shard count. TTL: 5 years. |
 
 ### Deduper Records
 
@@ -194,7 +194,7 @@ A Caffeine `AsyncLoadingCache` maintains the list of active shards (shards where
 | Max elements | 1024 |
 | Refresh interval | 5 seconds |
 
-The cache is keyed by `magazineIdentifier` and reloads by calling `getMetaData()`.
+The cache is keyed by `magazineIdentifier` and reloads by calling `getMetaData()`. It is process-local, so data loaded by another application instance can take up to the five-second refresh interval to appear in this instance's active-shard list.
 
 ## Distributed Lock Manager
 
@@ -212,10 +212,10 @@ When de-duplication is enabled, `AerospikeStorage` creates a `DistributedLockMan
 
 | Setting | Standard Operations | Fire Operations |
 |---------|---------------------|-----------------|
-| Retry on | `AerospikeException` | `AerospikeException` or `null` result |
-| Max attempts | 5 | Infinite (never stop) — but exits immediately with `NOTHING_TO_FIRE` if no active shards |
-| Wait between attempts | 10 ms (fixed) | 10 ms (fixed) |
-| Block strategy | Thread sleep | Thread sleep |
+| Retry on | `AerospikeException` | `null` result (pointer hole) |
+| Max attempts | 5 | Continues while active shards have unscanned pointers |
+| Wait between attempts | 10 ms (fixed) | None |
+| Block strategy | Thread sleep | None |
 
 ## Error Mapping
 

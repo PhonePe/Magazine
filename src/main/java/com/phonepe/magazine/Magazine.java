@@ -137,7 +137,7 @@ public class Magazine<T> {
                         if (Objects.isNull(magazineRecord)) {
                             final WritePolicy writePolicy = new WritePolicy(storage.getAerospikeClient()
                                     .getWritePolicyDefault());
-                            writePolicy.expiration = Constants.SHARDS_DEFAULT_TTL;
+                            writePolicy.expiration = Constants.SHARD_CONFIGURATION_TTL_SECONDS;
                             storage.getRetryerFactory()
                                     .getRetryer()
                                     .call(() -> {

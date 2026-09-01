@@ -44,9 +44,8 @@ public class Constants {
     public static final int DEFAULT_REFRESH = 5;
     public static final int DEFAULT_MAX_ELEMENTS = 1024;
     public static final int MAX_RETRIES = 5;
-    public static final long DELAY_BETWEEN_RETRIES = 10; //in milliseconds
-    public static final int MIN_SHARDS = 1;
-    public static final int SHARDS_DEFAULT_TTL = 60 * 60 * 24 * 365; // 1 year = 31536000 seconds
+    public static final long AEROSPIKE_RETRY_DELAY_MS = 10;
+    public static final int SHARD_CONFIGURATION_TTL_SECONDS = 5 * 365 * 24 * 60 * 60;
 
     public static final Set<Class<?>> DEDUPABLE_CLASSES = Set.of(
             String.class,

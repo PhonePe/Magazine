@@ -37,15 +37,12 @@ public class AerospikeRetryerFactory<T> {
         retryer = RetryerBuilder.<T>newBuilder()
                 .retryIfExceptionOfType(AerospikeException.class)
                 .withStopStrategy(StopStrategies.stopAfterAttempt(Constants.MAX_RETRIES))
-                .withWaitStrategy(WaitStrategies.fixedWait(Constants.DELAY_BETWEEN_RETRIES, TimeUnit.MILLISECONDS))
+                .withWaitStrategy(WaitStrategies.fixedWait(Constants.AEROSPIKE_RETRY_DELAY_MS, TimeUnit.MILLISECONDS))
                 .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
         fireRetryer = RetryerBuilder.newBuilder()
-                .retryIfExceptionOfType(AerospikeException.class)
                 .retryIfResult(Objects::isNull)
                 .withStopStrategy(StopStrategies.neverStop())
-                .withWaitStrategy(WaitStrategies.fixedWait(Constants.DELAY_BETWEEN_RETRIES, TimeUnit.MILLISECONDS))
-                .withBlockStrategy(BlockStrategies.threadSleepStrategy())
                 .build();
     }
 }

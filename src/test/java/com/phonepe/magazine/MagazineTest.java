@@ -19,6 +19,7 @@ package com.phonepe.magazine;
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Host;
 import com.aerospike.client.Key;
+import com.aerospike.client.Record;
 import com.aerospike.client.policy.ClientPolicy;
 import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.common.Constants;
@@ -136,6 +137,100 @@ public class MagazineTest {
         metaData = collectMetaData(magazine.getMetaData());
         Assert.assertEquals(1, metaData.getLoadCounter());
         Assert.assertEquals(2, metaData.getLoadPointer());
+    }
+
+    @Test
+    public void shardConfigurationHasFiveYearRetention() {
+        Record shardConfiguration = aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_META_SET", "MAGAZINE_ID1_SHARDS"));
+
+        Assert.assertNotNull(shardConfiguration);
+        Assert.assertEquals(16, shardConfiguration.getInt(Constants.SHARDS_BIN));
+        Assert.assertTrue(shardConfiguration.getTimeToLive() <= Constants.SHARD_CONFIGURATION_TTL_SECONDS);
+        Assert.assertTrue(shardConfiguration.getTimeToLive() >= Constants.SHARD_CONFIGURATION_TTL_SECONDS - 60);
+    }
+
+    @Test
+    public void emptyMagazineReturnsNothingToFire() throws ExecutionException, RetryException {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("EMPTY_CACHE_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+
+        assertMagazineError(ErrorCode.NOTHING_TO_FIRE, magazine::fire);
+    }
+
+    @Test
+    public void missingRecordReturnsNothingToFireAfterShardIsExhausted() throws ExecutionException, RetryException {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("MISSING_RECORD_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+
+        Assert.assertTrue(magazine.load("DATA"));
+        deleteOnlyLoadedRecord(magazine);
+        assertMagazineError(ErrorCode.NOTHING_TO_FIRE, magazine::fire);
+    }
+
+    @Test
+    public void fireSkipsMissingPointerWithinActiveShard() throws ExecutionException, RetryException {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("MAGAZINE_WITH_POINTER_HOLE")
+                .baseMagazineStorage(buildStorage(
+                        buildStorageConfig("NAMESPACE", "HOLE_DATA", "HOLE_META",
+                                30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                        String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient))
+                .build();
+
+        Assert.assertTrue(magazine.load("MISSING"));
+        Assert.assertTrue(magazine.load("DELIVERABLE"));
+        Assert.assertTrue(aerospikeClient.delete(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_HOLE_DATA", "MAGAZINE_WITH_POINTER_HOLE_1")));
+
+        Assert.assertEquals("DELIVERABLE", magazine.fire().getData());
+    }
+
+    @Test
+    public void fireSkipsMoreThanFiveMissingPointers() throws ExecutionException, RetryException {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("MAGAZINE_WITH_MANY_POINTER_HOLES")
+                .baseMagazineStorage(buildStorage(
+                        buildStorageConfig("NAMESPACE", "MANY_HOLES_DATA", "MANY_HOLES_META",
+                                30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                        String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient))
+                .build();
+
+        for (int i = 0; i < 11; i++) {
+            Assert.assertTrue(magazine.load("DATA_" + i));
+        }
+        for (int pointer = 1; pointer <= 10; pointer++) {
+            Assert.assertTrue(aerospikeClient.delete(
+                    aerospikeClient.getWritePolicyDefault(),
+                    new Key("NAMESPACE", "FARM_ID_MANY_HOLES_DATA",
+                            "MAGAZINE_WITH_MANY_POINTER_HOLES_" + pointer)));
+        }
+
+        Assert.assertEquals("DATA_10", magazine.fire().getData());
+    }
+
+    @Test
+    public void interruptedFireRetryPreservesInterruptStatus() throws ExecutionException, RetryException {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("INTERRUPTED_FIRE_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+
+        Assert.assertTrue(magazine.load("DATA"));
+        deleteOnlyLoadedRecord(magazine);
+        Thread.currentThread().interrupt();
+        try {
+            assertMagazineError(ErrorCode.RETRIES_EXHAUSTED, magazine::fire);
+            Assert.assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
@@ -403,6 +498,19 @@ public class MagazineTest {
                 .metaDataTtl(metaDataTtl)
                 .shards(shards)
                 .build();
+    }
+
+    private void deleteOnlyLoadedRecord(final Magazine<String> magazine) {
+        Map.Entry<String, MetaData> loadedShard = magazine.getMetaData().entrySet().stream()
+                .filter(entry -> entry.getValue().getLoadPointer() > 0)
+                .findFirst()
+                .orElseThrow();
+        int shard = Integer.parseInt(loadedShard.getKey().substring(loadedShard.getKey().indexOf('_') + 1));
+        String key = "%s_SHARD_%d_%d".formatted(
+                magazine.getMagazineIdentifier(), shard, loadedShard.getValue().getLoadPointer());
+        Assert.assertTrue(aerospikeClient.delete(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", key)));
     }
 
     private void assertMagazineError(final ErrorCode errorCode, final org.junit.function.ThrowingRunnable action) {

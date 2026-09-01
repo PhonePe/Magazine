@@ -70,7 +70,7 @@ String magId  = fired.getMagazineIdentifier();
 ```
 
 !!! info "Fire retry behaviour"
-    If there are no active shards (i.e. nothing to fire), `fire()` throws a `MagazineException` with `NOTHING_TO_FIRE` immediately — it does **not** retry. The internal infinite retry (`neverStop`) only kicks in when active shards exist but the selected record is null (e.g. expired). In that case it keeps selecting another shard until a non-null record is found.
+    If no deliverable record is available, `fire()` throws a `MagazineException` with `NOTHING_TO_FIRE`. Missing pointers are skipped while active shards still have unscanned pointers; exhausted shards are suppressed in the process-local cache. Loads from another instance can take up to five seconds to become visible.
 
 ## Reloading Data
 
