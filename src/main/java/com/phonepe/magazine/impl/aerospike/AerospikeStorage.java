@@ -56,8 +56,10 @@ import java.util.stream.IntStream;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+@Slf4j
 @Getter
 @EqualsAndHashCode(callSuper = true)
 public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
@@ -83,8 +85,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Class<T> clazz,
             final String clientId,
             final MagazineScope scope) {
-        super(StorageType.AEROSPIKE, storageConfig.getRecordTtl(), storageConfig.getMetaDataTtl(),
-                farmId, enableDeDupe, storageConfig.getShards(), clientId, scope);
+        super(StorageType.AEROSPIKE, validateStorageConfig(storageConfig).getRecordTtl(),
+                storageConfig.getMetaDataTtl(), farmId, enableDeDupe, storageConfig.getShards(), clientId, scope);
+        validateStorage(aerospikeClient, clazz, enableDeDupe);
         this.clazz = clazz;
         this.aerospikeClient = aerospikeClient;
         this.namespace = storageConfig.getNamespace();
@@ -92,29 +95,36 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.metaSetName = CommonUtils.resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
         this.retryerFactory = new AerospikeRetryerFactory<>();
         this.activeShardsCache = initializeCache();
-        this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
-                LockBase.builder()
-                        .mode(LockMode.EXCLUSIVE)
-                        .lockStore(AerospikeStore.builder()
-                                .aerospikeClient(aerospikeClient)
-                                .namespace(namespace)
-                                .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
-                                .build())
-                        .build());
-        this.lockLevel = CommonUtils.resolveLockLevel(scope);
-        lockManager.initialize();
+        if (enableDeDupe) {
+            this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
+                    LockBase.builder()
+                            .mode(LockMode.EXCLUSIVE)
+                            .lockStore(AerospikeStore.builder()
+                                    .aerospikeClient(aerospikeClient)
+                                    .namespace(namespace)
+                                    .setSuffix(Constants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
+                                    .build())
+                            .build());
+            this.lockLevel = CommonUtils.resolveLockLevel(scope);
+            lockManager.initialize();
+        } else {
+            this.lockManager = null;
+            this.lockLevel = null;
+        }
     }
 
     @Override
     public boolean load(final String magazineIdentifier,
             final T data) {
         validateDataType(data);
-        final Lock lock = lockManager.getLockInstance(
-                String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
+        Lock lock = null;
+        boolean lockAcquired = false;
         try {
-            // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
+                lock = lockManager.getLockInstance(
+                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
                 lockManager.tryAcquireLock(lock); // Exception is thrown if acquiring lock fails.
+                lockAcquired = true;
             }
             if (!isEnableDeDupe() || !alreadyExists(magazineIdentifier, data)) {
                 final Integer selectedShard = selectShard();
@@ -133,7 +143,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
-            lockManager.releaseLock(lock);
+            releaseLock(lock, lockAcquired);
         }
     }
 
@@ -141,12 +151,14 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     public boolean reload(final String magazineIdentifier,
             final T data) {
         validateDataType(data);
-        final Lock lock = lockManager.getLockInstance(
-                String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
+        Lock lock = null;
+        boolean lockAcquired = false;
         try {
-            // Acquire lock if deDupe is enabled.
             if (isEnableDeDupe()) {
+                lock = lockManager.getLockInstance(
+                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
                 lockManager.tryAcquireLock(lock);
+                lockAcquired = true;
             }
 
             final Integer selectedShard = selectShard();
@@ -160,7 +172,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_LOADING_DATA, magazineIdentifier, lock);
         } finally {
-            lockManager.releaseLock(lock);
+            releaseLock(lock, lockAcquired);
         }
     }
 
@@ -189,16 +201,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .collect(Collectors.toMap(
                             i -> String.join(Constants.KEY_DELIMITER, Constants.SHARD_PREFIX, String.valueOf(i)),
                             i -> MetaData.builder()
-                                    .fireCounter(counterRecords[i] != null
+                                    .fireCounter(Objects.nonNull(counterRecords[i])
                                             ? counterRecords[i].getLong(Constants.FIRE_COUNTER)
                                             : 0L)
-                                    .loadCounter(counterRecords[i] != null
+                                    .loadCounter(Objects.nonNull(counterRecords[i])
                                             ? counterRecords[i].getLong(Constants.LOAD_COUNTER)
                                             : 0L)
-                                    .firePointer(pointerRecords[i] != null
+                                    .firePointer(Objects.nonNull(pointerRecords[i])
                                             ? pointerRecords[i].getLong(Constants.FIRE_POINTER)
                                             : 0L)
-                                    .loadPointer(pointerRecords[i] != null
+                                    .loadPointer(Objects.nonNull(pointerRecords[i])
                                             ? pointerRecords[i].getLong(Constants.LOAD_POINTER)
                                             : 0L)
                                     .build()));
@@ -235,11 +247,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Record[] records = (Record[]) retryerFactory.getRetryer()
                     .call(() -> aerospikeClient.get(
                             aerospikeClient.getBatchPolicyDefault(),
-                            keyAndMagazineDataBuilderList.stream()
-                                    .map(Pair::getKey)
-                                    .collect(Collectors.toList())
-                                    .toArray(Key[]::new))
-                    );
+                             keyAndMagazineDataBuilderList.stream()
+                                     .map(Pair::getKey)
+                                     .toList()
+                                     .toArray(Key[]::new))
+                     );
 
             return IntStream.range(0, keyAndMagazineDataBuilderList.size())
                     .boxed()
@@ -337,7 +349,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.LOAD_POINTER));
                 });
 
-        if (magazineRecord == null) {
+        if (Objects.isNull(magazineRecord)) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_POINTERS, magazineIdentifier))
@@ -380,7 +392,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.LOAD_COUNTER));
                 });
 
-        if (magazineRecord == null) {
+        if (Objects.isNull(magazineRecord)) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -404,7 +416,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.FIRE_COUNTER));
                 });
 
-        if (magazineRecord == null) {
+        if (Objects.isNull(magazineRecord)) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -429,7 +441,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                             Operation.get(Constants.FIRE_COUNTER));
                 });
 
-        if (magazineRecord == null) {
+        if (Objects.isNull(magazineRecord)) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.MAGAZINE_UNPREPARED)
                     .message(String.format(ErrorMessage.ERROR_READING_COUNTERS, magazineIdentifier))
@@ -465,7 +477,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private String createKey(final String magazineIdentifier,
             final Integer shard,
             final String suffix) {
-        return shard != null
+        return Objects.nonNull(shard)
                 ? String.join(Constants.KEY_DELIMITER,
                 magazineIdentifier,
                 Constants.SHARD_PREFIX,
@@ -575,13 +587,63 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     private void validateDataType(final T data) {
-        if (!data.getClass()
-                .isAssignableFrom(clazz)) {
+        if (!clazz.isInstance(data)) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.DATA_TYPE_MISMATCH)
                     .message("Mismatch in data type of magazine and requested data.")
                     .build();
         }
+    }
+
+    private static AerospikeStorageConfig validateStorageConfig(final AerospikeStorageConfig storageConfig) {
+        if (Objects.isNull(storageConfig)) {
+            throw invalidConfiguration("Aerospike storage configuration is required.");
+        }
+        if (Objects.isNull(storageConfig.getNamespace()) || storageConfig.getNamespace().isBlank()) {
+            throw invalidConfiguration("Aerospike namespace is required.");
+        }
+        if (Objects.isNull(storageConfig.getDataSetName()) || storageConfig.getDataSetName().isBlank()) {
+            throw invalidConfiguration("Aerospike data set name is required.");
+        }
+        if (Objects.isNull(storageConfig.getMetaSetName()) || storageConfig.getMetaSetName().isBlank()) {
+            throw invalidConfiguration("Aerospike metadata set name is required.");
+        }
+        return storageConfig;
+    }
+
+    private static void validateStorage(final IAerospikeClient aerospikeClient,
+            final Class<?> clazz,
+            final boolean enableDeDupe) {
+        if (Objects.isNull(aerospikeClient)) {
+            throw invalidConfiguration("Aerospike client is required.");
+        }
+        if (Objects.isNull(clazz)) {
+            throw invalidConfiguration("Magazine data type is required.");
+        }
+        if (enableDeDupe && !Constants.DEDUPABLE_CLASSES.contains(clazz)) {
+            throw MagazineException.builder()
+                    .errorCode(ErrorCode.DATA_TYPE_MISMATCH)
+                    .message("Deduplication is supported only for String, Long, and Integer data types.")
+                    .build();
+        }
+    }
+
+    private void releaseLock(final Lock lock, final boolean lockAcquired) {
+        if (!lockAcquired) {
+            return;
+        }
+        try {
+            lockManager.releaseLock(lock);
+        } catch (Exception e) {
+            log.warn("Error releasing deduplication lock for lock id {}", lock.getLockId(), e);
+        }
+    }
+
+    private static MagazineException invalidConfiguration(final String message) {
+        return MagazineException.builder()
+                .errorCode(ErrorCode.INVALID_CONFIGURATION)
+                .message(message)
+                .build();
     }
 
     private MagazineException handleException(final Exception exception,
@@ -595,7 +657,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                     .equals(dlmException.getErrorCode())) {
                 return MagazineException.builder()
                         .errorCode(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT)
-                        .message(String.format("Error acquiring lock - %s", (lock != null)
+                        .message(String.format("Error acquiring lock - %s", Objects.nonNull(lock)
                                 ? lock.getLockId()
                                 : null))
                         .cause(exception)

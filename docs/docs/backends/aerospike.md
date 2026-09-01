@@ -32,8 +32,8 @@ AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
 | `dataSetName` | `String` | *(required)* | Set name for data records. Resolved as `{farmId}_{dataSetName}` for `LOCAL` scope. |
 | `metaSetName` | `String` | *(required)* | Set name for metadata records. Resolved as `{farmId}_{metaSetName}` for `LOCAL` scope. |
 | `shards` | `int` | `64` | Number of shards in the magazine. |
-| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. |
-| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. |
+| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. Must be positive. |
+| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. Must be greater than `recordTtl`. |
 | `enableDeDupe` | `boolean` | `false` | Enable distributed de-duplication on writes. |
 | `farmId` | `String` | *(required)* | Data centre / farm identifier. |
 | `clazz` | `Class<T>` | *(required)* | The data type class for casting on read. |
@@ -226,4 +226,3 @@ When de-duplication is enabled, `AerospikeStorage` creates a `DistributedLockMan
 | `RetryException` | `RETRIES_EXHAUSTED` |
 | `ExecutionException` | `CONNECTION_ERROR` |
 | All others | `INTERNAL_ERROR` (via `propagate()`) |
-

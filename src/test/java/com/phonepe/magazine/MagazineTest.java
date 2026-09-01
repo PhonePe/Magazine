@@ -139,6 +139,21 @@ public class MagazineTest {
     }
 
     @Test
+    public void dedupeDisabledDoesNotInitializeLockManager() throws ExecutionException, RetryException {
+        AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("MAGAZINE_WITHOUT_DEDUPE")
+                .baseMagazineStorage(storage)
+                .build();
+
+        Assert.assertNull(storage.getLockManager());
+        Assert.assertNull(storage.getLockLevel());
+        Assert.assertTrue(magazine.load("DATA"));
+        Assert.assertTrue(magazine.load("DATA"));
+        Assert.assertEquals(2, collectMetaData(magazine.getMetaData()).getLoadCounter());
+    }
+
+    @Test
     public void magazinePeekTest() {
         Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
         magazine.load("DATA1");
@@ -257,6 +272,71 @@ public class MagazineTest {
     }
 
     @Test
+    public void configurationValidationTest() {
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () ->
+                Magazine.<String>builder()
+                        .magazineIdentifier("MAGAZINE_ID")
+                        .build());
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () ->
+                Magazine.<String>builder()
+                        .magazineIdentifier(" ")
+                        .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                        .build());
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(null, String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig(null, "DATA_SET", "META_SET", 100, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", " ", "META_SET", 100, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", " ", 100, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 0, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 200, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_SHARDS, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 0), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), String.class,
+                false, " ", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), String.class,
+                false, "FARM_ID", null, MagazineScope.LOCAL, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", null, aerospikeClient));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), String.class,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, null));
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), null,
+                false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+    }
+
+    @Test
+    public void payloadTypeValidationTest() throws ExecutionException, RetryException {
+        Magazine<String> stringMagazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> stringMagazine.load(null));
+        assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET", 100, 200, 1), Number.class,
+                true, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient));
+
+        Magazine<Number> numberMagazine = Magazine.<Number>builder()
+                .magazineIdentifier("NUMBER_MAGAZINE")
+                .baseMagazineStorage(buildStorage(
+                        buildStorageConfig("NAMESPACE", "NUMBER_DATA", "NUMBER_META", 100, 200, 1),
+                        Number.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient))
+                .build();
+        Assert.assertTrue(numberMagazine.load(1));
+    }
+
+    @Test
     public void notImplementedGlobalScopeTest() throws ExecutionException, RetryException {
         try {
             Magazine.<Long>builder()
@@ -271,8 +351,9 @@ public class MagazineTest {
                                     .build())
                             .aerospikeClient(aerospikeClient)
                             .enableDeDupe(true)
+                            .farmId("FARM_ID")
                             .clientId("CLIENT_ID")
-                            .scope(MagazineScope.LOCAL)
+                            .scope(MagazineScope.GLOBAL)
                             .build())
                     .build();
         } catch (MagazineException e) {
@@ -281,19 +362,52 @@ public class MagazineTest {
     }
 
     private <T> BaseMagazineStorage<T> buildMagazineStorage(Class<T> clazz) {
+        return buildMagazineStorage(clazz, true);
+    }
+
+    private <T> AerospikeStorage<T> buildMagazineStorage(Class<T> clazz, boolean enableDeDupe) {
+        return buildStorage(buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
+                        30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 16),
+                clazz, enableDeDupe, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient);
+    }
+
+    private <T> AerospikeStorage<T> buildStorage(final AerospikeStorageConfig config,
+            final Class<T> clazz,
+            final boolean enableDeDupe,
+            final String farmId,
+            final String clientId,
+            final MagazineScope scope,
+            final AerospikeClient client) {
         return AerospikeStorage.<T>builder()
                 .clazz(clazz)
-                .storageConfig(AerospikeStorageConfig.builder()
-                        .dataSetName("DATA_SET")
-                        .metaSetName("META_SET")
-                        .namespace("NAMESPACE")
-                        .shards(16)
-                        .build())
-                .aerospikeClient(aerospikeClient)
-                .enableDeDupe(true)
-                .clientId("CLIENT_ID")
-                .scope(MagazineScope.LOCAL)
+                .storageConfig(config)
+                .aerospikeClient(client)
+                .enableDeDupe(enableDeDupe)
+                .farmId(farmId)
+                .clientId(clientId)
+                .scope(scope)
                 .build();
+    }
+
+    private AerospikeStorageConfig buildStorageConfig(final String namespace,
+            final String dataSetName,
+            final String metaSetName,
+            final int recordTtl,
+            final int metaDataTtl,
+            final int shards) {
+        return AerospikeStorageConfig.builder()
+                .namespace(namespace)
+                .dataSetName(dataSetName)
+                .metaSetName(metaSetName)
+                .recordTtl(recordTtl)
+                .metaDataTtl(metaDataTtl)
+                .shards(shards)
+                .build();
+    }
+
+    private void assertMagazineError(final ErrorCode errorCode, final org.junit.function.ThrowingRunnable action) {
+        MagazineException exception = Assert.assertThrows(MagazineException.class, action);
+        Assert.assertEquals(errorCode, exception.getErrorCode());
     }
 
     public MetaData collectMetaData(Map<String, MetaData> metaDataMap) {
