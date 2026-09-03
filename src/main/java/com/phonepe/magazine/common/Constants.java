@@ -27,12 +27,15 @@ public class Constants {
     public static final String MODIFIED_AT = "modified_at";
 
     public static final String POINTERS = "POINTERS";
+    public static final String METADATA = "METADATA";
     public static final String COUNTERS = "COUNTERS";
 
     public static final String LOAD_COUNTER = "LOAD_COUNTER";
     public static final String FIRE_COUNTER = "FIRE_COUNTER";
     public static final String LOAD_POINTER = "LOAD_POINTER";
     public static final String FIRE_POINTER = "FIRE_POINTER";
+    public static final String METADATA_SCHEMA_VERSION = "META_VERSION";
+    public static final String CREATED_AT = "CREATED_AT";
 
     public static final String KEY_DELIMITER = "_";
 
@@ -44,6 +47,8 @@ public class Constants {
     public static final int DEFAULT_REFRESH = 5;
     public static final int DEFAULT_MAX_ELEMENTS = 1024;
     public static final int MAX_RETRIES = 5;
+    public static final int LEGACY_METADATA_SCHEMA_VERSION = 0;
+    public static final int UNIFIED_METADATA_SCHEMA_VERSION = 2;
     public static final long AEROSPIKE_RETRY_DELAY_MS = 10;
     public static final int SHARD_CONFIGURATION_TTL_SECONDS = 5 * 365 * 24 * 60 * 60;
 

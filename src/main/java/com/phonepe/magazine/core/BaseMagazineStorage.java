@@ -18,6 +18,7 @@ package com.phonepe.magazine.core;
 
 import com.phonepe.magazine.common.MagazineData;
 import com.phonepe.magazine.common.MetaData;
+import com.phonepe.magazine.MagazineContext;
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.scope.MagazineScope;
@@ -68,12 +69,12 @@ public abstract class BaseMagazineStorage<T> {
     /**
      * Load data into the specified magazine.
      *
-     * @param magazineIdentifier The identifier of the magazine to load data into.
+     * @param context The magazine operation context.
      * @param data The data to be loaded.
      * @return True if the data was successfully loaded, false otherwise.
      */
     public abstract boolean load(
-            final String magazineIdentifier,
+            final MagazineContext context,
             final T data
     );
 
@@ -81,47 +82,48 @@ public abstract class BaseMagazineStorage<T> {
      * Reload data into the specified magazine. This won't increase the load counter as the data was already loaded,
      * but load pointer will be incremented as the data will appended at the end.
      *
-     * @param magazineIdentifier The identifier of the magazine to reload data into.
+     * @param context The magazine operation context.
      * @param data The data to be reloaded.
      * @return True if the data was successfully reloaded, false otherwise.
      */
     public abstract boolean reload(
-            final String magazineIdentifier,
+            final MagazineContext context,
             final T data
     );
 
     /**
      * Fire and retrieve data from the specified magazine.
      *
-     * @param magazineIdentifier The identifier of the magazine to retrieve data from.
+     * @param context The magazine operation context.
      * @return The MagazineData containing the fired data.
      */
-    public abstract MagazineData<T> fire(final String magazineIdentifier);
+    public abstract MagazineData<T> fire(final MagazineContext context);
 
     /**
      * Retrieve metadata of the specified magazine i.e the number of loaded or fired, pointers and counters.
      *
-     * @param magazineIdentifier The identifier of the magazine to get metadata from.
+     * @param context The magazine operation context.
      * @return A map containing metadata information.
      */
-    public abstract Map<String, MetaData> getMetaData(final String magazineIdentifier);
+    public abstract Map<String, MetaData> getMetaData(final MagazineContext context);
 
     /**
      * Delete the provided MagazineData from the magazine.
      *
+     * @param context The magazine operation context.
      * @param magazineData The MagazineData to be deleted.
      */
-    public abstract void delete(final MagazineData<T> magazineData);
+    public abstract void delete(final MagazineContext context, final MagazineData<T> magazineData);
 
     /**
      * Peek data from specific shards and pointers within the magazine.
      *
-     * @param magazineIdentifier The identifier of the magazine to peek from.
+     * @param context The magazine operation context.
      * @param shardPointersMap A map where keys are shard identifiers and values are sets of pointers to peek from.
      * @return A set of MagazineData containing the peeked data.
      */
     public abstract Set<MagazineData<T>> peek(
-            final String magazineIdentifier,
+            final MagazineContext context,
             final Map<Integer, Set<Long>> shardPointersMap
     );
 

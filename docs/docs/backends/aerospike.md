@@ -40,6 +40,8 @@ AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
 | `clientId` | `String` | *(required)* | Owning service identifier. |
 | `scope` | `MagazineScope` | *(required)* | `LOCAL` or `GLOBAL`. |
 
+Each `Magazine` resolves its metadata schema version during construction and passes it with the magazine identifier as immutable operation context. A storage instance can therefore be shared without runtime schema reads or cross-magazine routing state.
+
 ## How It Works
 
 ### Initialization
@@ -47,10 +49,9 @@ AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
 When a `Magazine` is constructed with `AerospikeStorage`, the constructor validates shard configuration:
 
 1. Reads the existing shard metadata record from Aerospike.
-2. If no record exists, writes the configured shard count with a 1-year TTL.
-3. If a record exists, validates:
-    - Cannot **decrease** shard count.
-    - Cannot **convert** unsharded (≤ 1) to sharded (> 1).
+2. If no record exists, creates a version-2 shard record with the configured shard count and a 5-year TTL.
+3. If a record exists, the shard count cannot decrease and an unsharded magazine cannot become sharded. Accepted increases are persisted to prevent later clients from reopening the magazine with fewer shards.
+4. A missing `META_VERSION` selects the legacy `POINTERS` and `COUNTERS` layout; version 2 selects `METADATA`.
 
 ### Load Operation
 
@@ -89,23 +90,24 @@ flowchart TD
     B --> BA{"Any active shards?"}
     BA -->|No| BB["Throw NOTHING_TO_FIRE"]
     BA -->|Yes| C["Select random active shard"]
-    C --> D["Read pointers for shard"]
+    C --> D["Read metadata for shard"]
     D --> E{"firePointer < loadPointer?"}
     E -->|No| F["Retry (select another shard)"]
     F --> B
-    E -->|Yes| G["Increment fire pointer (atomic)"]
-    G --> H["Read data record"]
+    E -->|Yes| H["Read candidate data record"]
     H --> I{"Record non-null?"}
-    I -->|No| F
-    I -->|Yes| J["Increment fire counter"]
+    I -->|No| IA["CAS fire pointer"]
+    IA --> F
+    I -->|Yes| J["CAS fire pointer and fire counter"]
     J --> K["Return MagazineData"]
 ```
 
 1. Active shards are fetched from a Caffeine cache (refreshed every 5 seconds).
 2. A random active shard is selected.
-3. If `firePointer < loadPointer`, the fire pointer is incremented and the data record is read.
-4. If the record is null (e.g. expired), the operation retries because later pointers may still exist in that shard.
-5. Scanning continues while an active shard has unscanned pointers. Once all cached active shards are exhausted, `NOTHING_TO_FIRE` is returned.
+3. If `firePointer < loadPointer`, the next candidate data record is read.
+4. A write filter conditionally claims the candidate only while `FIRE_POINTER` still equals the observed value. Version-2 records atomically advance both `FIRE_POINTER` and `FIRE_COUNTER`; legacy magazines update the counter record separately. Missing records advance only `FIRE_POINTER`.
+5. If another consumer claims the pointer first, the filter rejects the write and the operation retries from fresh metadata. Updates to unrelated metadata bins do not invalidate the claim.
+6. Scanning continues while an active shard has unscanned pointers. Once all cached active shards are exhausted, `NOTHING_TO_FIRE` is returned.
 
 !!! info "Fire retry behaviour"
     If there are no active shards, `getActiveShards()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately. Only exhausted shards are removed from the current process-local cached value; a missing record does not imply that its shard is empty.
@@ -139,10 +141,10 @@ Set:  {farmId}_{dataSetName}                        (LOCAL scope)
 | `data` | varies | The stored payload. |
 | `modified_at` | `Long` | Timestamp of last modification (epoch millis). |
 
-### Metadata Records — Pointers
+### Unified Metadata Records
 
 ```
-Key:  {magazineId}_SHARD_{shardIndex}_POINTERS
+Key:  {magazineId}_SHARD_{shardIndex}_METADATA
 Set:  {farmId}_{metaSetName}
 ```
 
@@ -150,18 +152,16 @@ Set:  {farmId}_{metaSetName}
 |-----|------|---------|
 | `LOAD_POINTER` | `Long` | Current load position for the shard. |
 | `FIRE_POINTER` | `Long` | Current fire position for the shard. |
-
-### Metadata Records — Counters
-
-```
-Key:  {magazineId}_SHARD_{shardIndex}_COUNTERS
-Set:  {farmId}_{metaSetName}
-```
-
-| Bin | Type | Content |
-|-----|------|---------|
 | `LOAD_COUNTER` | `Long` | Total successful loads for the shard. |
 | `FIRE_COUNTER` | `Long` | Total successful fires for the shard. |
+
+New magazines use the unified `METADATA` record. Existing magazines whose shard record has no `META_VERSION` remain on the legacy layout and continue using separate `POINTERS` and `COUNTERS` records. Magazine does not migrate persisted metadata internally.
+
+!!! warning "Legacy queues"
+    Let short-lived legacy magazines drain on their existing layout. Create a new magazine identifier when a team needs the unified layout immediately. If the `_SHARDS` record is absent, the identifier is treated as a new version-2 magazine; orphaned legacy metadata is not discovered or migrated.
+
+!!! warning "Rolling deployment"
+    Existing versionless magazines remain compatible during a rolling deployment. Do not create a new magazine identifier until every running instance uses a version that understands `META_VERSION`; older clients would write legacy metadata for the new identifier.
 
 ### Shard Metadata
 
@@ -173,6 +173,8 @@ Set:  {farmId}_{metaSetName}
 | Bin | Type | Content |
 |-----|------|---------|
 | `SHARDS` | `Integer` | Configured shard count. TTL: 5 years. |
+| `META_VERSION` | `Integer` | Metadata layout version. |
+| `CREATED_AT` | `Long` | Creation time for version-2 magazines. |
 
 ### Deduper Records
 
@@ -187,14 +189,14 @@ Set:  {farmId}_{clientId}_deduper
 
 ## Active Shards Cache
 
-A Caffeine `AsyncLoadingCache` maintains the list of active shards (shards where `loadCounter > fireCounter` **and** `loadPointer > firePointer`):
+A Caffeine `AsyncLoadingCache` maintains the list of active shards (shards where `loadCounter > fireCounter` and `loadPointer > firePointer`):
 
 | Setting | Value |
 |---------|-------|
 | Max elements | 1024 |
 | Refresh interval | 5 seconds |
 
-The cache is keyed by `magazineIdentifier` and reloads by calling `getMetaData()`. It is process-local, so data loaded by another application instance can take up to the five-second refresh interval to appear in this instance's active-shard list.
+The cache is keyed by immutable magazine context. Version-2 magazines reload with one metadata batch read; legacy magazines retain separate pointer and counter batch reads. The cache is process-local, so data loaded by another application instance can take up to the five-second refresh interval to appear in this instance's active-shard list.
 
 ## Distributed Lock Manager
 
@@ -216,6 +218,8 @@ When de-duplication is enabled, `AerospikeStorage` creates a `DistributedLockMan
 | Max attempts | 5 | Continues while active shards have unscanned pointers |
 | Wait between attempts | 10 ms (fixed) | None |
 | Block strategy | Thread sleep | None |
+
+The filtered fire-pointer claim is attempted once because an Aerospike timeout can leave the write outcome ambiguous. Retrying it could claim another pointer.
 
 ## Error Mapping
 

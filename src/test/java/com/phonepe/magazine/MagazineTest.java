@@ -17,6 +17,7 @@
 package com.phonepe.magazine;
 
 import com.aerospike.client.AerospikeClient;
+import com.aerospike.client.Bin;
 import com.aerospike.client.Host;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
@@ -35,12 +36,18 @@ import com.phonepe.magazine.server.AerospikeTestContainer;
 import io.appform.testcontainers.aerospike.AerospikeContainerConfiguration;
 import io.appform.testcontainers.aerospike.AerospikeWaitStrategy;
 
-import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.*;
 import org.testcontainers.containers.GenericContainer;
@@ -51,7 +58,7 @@ import org.testcontainers.containers.GenericContainer;
 @SuppressWarnings("unchecked")
 public class MagazineTest {
 
-    private final Random random = new SecureRandom();
+    private final Random random = ThreadLocalRandom.current();
     private MagazineManager magazineManager;
     private AerospikeClient aerospikeClient;
     private static GenericContainer<?> aerospikeContainer;
@@ -147,6 +154,9 @@ public class MagazineTest {
 
         Assert.assertNotNull(shardConfiguration);
         Assert.assertEquals(16, shardConfiguration.getInt(Constants.SHARDS_BIN));
+        Assert.assertEquals(Constants.UNIFIED_METADATA_SCHEMA_VERSION,
+                shardConfiguration.getInt(Constants.METADATA_SCHEMA_VERSION));
+        Assert.assertTrue(shardConfiguration.getLong(Constants.CREATED_AT) > 0);
         Assert.assertTrue(shardConfiguration.getTimeToLive() <= Constants.SHARD_CONFIGURATION_TTL_SECONDS);
         Assert.assertTrue(shardConfiguration.getTimeToLive() >= Constants.SHARD_CONFIGURATION_TTL_SECONDS - 60);
     }
@@ -159,6 +169,163 @@ public class MagazineTest {
                 .build();
 
         assertMagazineError(ErrorCode.NOTHING_TO_FIRE, magazine::fire);
+    }
+
+    @Test
+    public void freshMagazineStoresCountersAndPointersTogether() throws ExecutionException, RetryException {
+        Magazine<String> magazine = buildUnshardedMagazine(
+                "UNIFIED_METADATA_MAGAZINE", "UNIFIED_METADATA_DATA", "UNIFIED_METADATA_META");
+
+        Assert.assertTrue(magazine.load("DATA"));
+
+        Record metadata = aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_UNIFIED_METADATA_META", "UNIFIED_METADATA_MAGAZINE_METADATA"));
+        Assert.assertNotNull(metadata);
+        Assert.assertEquals(1, metadata.getLong(Constants.LOAD_POINTER));
+        Assert.assertEquals(1, metadata.getLong(Constants.LOAD_COUNTER));
+        Assert.assertEquals(0, metadata.getLong(Constants.FIRE_POINTER));
+        Assert.assertEquals(0, metadata.getLong(Constants.FIRE_COUNTER));
+        Assert.assertNull(aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_UNIFIED_METADATA_META", "UNIFIED_METADATA_MAGAZINE_POINTERS")));
+        Assert.assertNull(aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_UNIFIED_METADATA_META", "UNIFIED_METADATA_MAGAZINE_COUNTERS")));
+    }
+
+    @Test
+    public void activeShardDiscoveryRequiresPublishedCounter() throws ExecutionException, RetryException {
+        Magazine<String> magazine = buildUnshardedMagazine(
+                "COUNTER_DRIFT_MAGAZINE", "COUNTER_DRIFT_DATA", "COUNTER_DRIFT_META");
+
+        Assert.assertTrue(magazine.load("DATA"));
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_COUNTER_DRIFT_META", "COUNTER_DRIFT_MAGAZINE_METADATA"),
+                new Bin(Constants.LOAD_COUNTER, 0L),
+                new Bin(Constants.FIRE_COUNTER, 10L));
+
+        MetaData metaData = collectMetaData(magazine.getMetaData());
+        Assert.assertEquals(0, metaData.getLoadCounter());
+        Assert.assertEquals(10, metaData.getFireCounter());
+        Assert.assertEquals(1, metaData.getLoadPointer());
+        assertMagazineError(ErrorCode.NOTHING_TO_FIRE, magazine::fire);
+    }
+
+    @Test
+    public void versionlessMagazineContinuesUsingLegacyMetadata() throws ExecutionException, RetryException {
+        String magazineIdentifier = "LEGACY_METADATA_MAGAZINE";
+        String metaSet = "FARM_ID_LEGACY_METADATA_META";
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_SHARDS"),
+                new Bin(Constants.SHARDS_BIN, 1));
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_POINTERS"),
+                new Bin(Constants.LOAD_POINTER, 0L),
+                new Bin(Constants.FIRE_POINTER, 0L));
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_COUNTERS"),
+                new Bin(Constants.LOAD_COUNTER, 0L),
+                new Bin(Constants.FIRE_COUNTER, 0L));
+
+        Magazine<String> magazine = buildUnshardedMagazine(
+                magazineIdentifier, "LEGACY_METADATA_DATA", "LEGACY_METADATA_META");
+        Assert.assertTrue(magazine.load("DATA"));
+
+        MetaData metaData = collectMetaData(magazine.getMetaData());
+        Assert.assertEquals(1, metaData.getLoadPointer());
+        Assert.assertEquals(0, metaData.getFirePointer());
+        Assert.assertEquals(1, metaData.getLoadCounter());
+        Assert.assertEquals(0, metaData.getFireCounter());
+        Assert.assertEquals("DATA", magazine.fire().getData());
+
+        Record shardConfiguration = aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_SHARDS"));
+        Assert.assertEquals(Constants.LEGACY_METADATA_SCHEMA_VERSION,
+                shardConfiguration.getInt(Constants.METADATA_SCHEMA_VERSION));
+        Assert.assertNull(aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_METADATA")));
+    }
+
+    @Test
+    public void storageCanServeLegacyAndUnifiedMagazines() throws ExecutionException, RetryException {
+        AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
+        String legacyIdentifier = "SHARED_STORAGE_LEGACY";
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_META_SET", legacyIdentifier + "_SHARDS"),
+                new Bin(Constants.SHARDS_BIN, 16));
+        Magazine<String> legacy = Magazine.<String>builder()
+                .magazineIdentifier(legacyIdentifier)
+                .baseMagazineStorage(storage)
+                .build();
+        Magazine<String> unified = Magazine.<String>builder()
+                .magazineIdentifier("SHARED_STORAGE_UNIFIED")
+                .baseMagazineStorage(storage)
+                .build();
+
+        Assert.assertTrue(legacy.load("LEGACY"));
+        Assert.assertTrue(unified.load("UNIFIED"));
+        Assert.assertEquals("LEGACY", legacy.fire().getData());
+        Assert.assertEquals("UNIFIED", unified.fire().getData());
+    }
+
+    @Test
+    public void shardIncreaseIsPersisted() throws ExecutionException, RetryException {
+        String magazineIdentifier = "SHARD_INCREASE_MAGAZINE";
+        String metaSet = "FARM_ID_META_SET";
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_SHARDS"),
+                new Bin(Constants.SHARDS_BIN, 2),
+                new Bin(Constants.METADATA_SCHEMA_VERSION, Constants.UNIFIED_METADATA_SCHEMA_VERSION));
+
+        Magazine.<String>builder()
+                .magazineIdentifier(magazineIdentifier)
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+
+        Record shardConfiguration = aerospikeClient.get(
+                aerospikeClient.getReadPolicyDefault(),
+                new Key("NAMESPACE", metaSet, magazineIdentifier + "_SHARDS"));
+        Assert.assertEquals(16, shardConfiguration.getInt(Constants.SHARDS_BIN));
+    }
+
+    @Test
+    public void unsupportedMetadataSchemaIsRejected() {
+        String magazineIdentifier = "UNSUPPORTED_SCHEMA_MAGAZINE";
+        aerospikeClient.put(
+                aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_META_SET", magazineIdentifier + "_SHARDS"),
+                new Bin(Constants.SHARDS_BIN, 16),
+                new Bin(Constants.METADATA_SCHEMA_VERSION, 99));
+
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> Magazine.<String>builder()
+                .magazineIdentifier(magazineIdentifier)
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build());
+    }
+
+    @Test
+    public void magazineCannotDeleteAnotherMagazinesData() throws ExecutionException, RetryException {
+        Magazine<String> first = Magazine.<String>builder()
+                .magazineIdentifier("DELETE_OWNER_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        Magazine<String> second = Magazine.<String>builder()
+                .magazineIdentifier("DELETE_OTHER_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        Assert.assertTrue(second.load("DATA"));
+        MagazineData<String> magazineData = second.fire();
+
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> first.delete(magazineData));
     }
 
     @Test
@@ -190,6 +357,43 @@ public class MagazineTest {
                 new Key("NAMESPACE", "FARM_ID_HOLE_DATA", "MAGAZINE_WITH_POINTER_HOLE_1")));
 
         Assert.assertEquals("DELIVERABLE", magazine.fire().getData());
+        MetaData metaData = collectMetaData(magazine.getMetaData());
+        Assert.assertEquals(2, metaData.getFirePointer());
+        Assert.assertEquals(1, metaData.getFireCounter());
+    }
+
+    @Test
+    public void concurrentFireClaimsEachRecordOnce() throws Exception {
+        Magazine<String> magazine = buildUnshardedMagazine(
+                "CONCURRENT_FIRE_MAGAZINE", "CONCURRENT_FIRE_DATA", "CONCURRENT_FIRE_META");
+        int records = 20;
+        for (int i = 0; i < records; i++) {
+            Assert.assertTrue(magazine.load("DATA_" + i));
+        }
+
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<MagazineData<String>>> futures = new ArrayList<>(records);
+            for (int i = 0; i < records; i++) {
+                futures.add(executor.submit(magazine::fire));
+            }
+
+            Set<String> firedData = new HashSet<>();
+            Set<Long> firedPointers = new HashSet<>();
+            for (Future<MagazineData<String>> future : futures) {
+                MagazineData<String> magazineData = future.get(30, TimeUnit.SECONDS);
+                firedData.add(magazineData.getData());
+                firedPointers.add(magazineData.getFirePointer());
+            }
+
+            Assert.assertEquals(records, firedData.size());
+            Assert.assertEquals(records, firedPointers.size());
+            MetaData metaData = collectMetaData(magazine.getMetaData());
+            Assert.assertEquals(records, metaData.getFirePointer());
+            Assert.assertEquals(records, metaData.getFireCounter());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -276,11 +480,14 @@ public class MagazineTest {
                         Set.of(10L, 20L)
                 )
         );
-        Assert.assertFalse(magazineDataSet.isEmpty());
-        Assert.assertNotNull(magazineDataSet.stream()
-                .findAny()
-                .get()
-                .getData());
+        Assert.assertEquals(1, magazineDataSet.size());
+        MagazineData<String> magazineData = magazineDataSet.iterator().next();
+        Assert.assertNotNull(magazineData.getData());
+        Assert.assertEquals("MAGAZINE_ID1", magazineData.getMagazineIdentifier());
+        Assert.assertEquals(randomPointerInShard, magazineData.getFirePointer());
+        Assert.assertEquals(Integer.valueOf(
+                Integer.parseInt(shardId.substring(shardId.indexOf(Constants.KEY_DELIMITER) + 1))),
+                magazineData.getShard());
     }
 
     @Test
@@ -464,6 +671,18 @@ public class MagazineTest {
         return buildStorage(buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
                         30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 16),
                 clazz, enableDeDupe, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient);
+    }
+
+    private Magazine<String> buildUnshardedMagazine(final String magazineIdentifier,
+            final String dataSetName,
+            final String metaSetName) throws ExecutionException, RetryException {
+        return Magazine.<String>builder()
+                .magazineIdentifier(magazineIdentifier)
+                .baseMagazineStorage(buildStorage(
+                        buildStorageConfig("NAMESPACE", dataSetName, metaSetName,
+                                30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                        String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient))
+                .build();
     }
 
     private <T> AerospikeStorage<T> buildStorage(final AerospikeStorageConfig config,

@@ -17,10 +17,14 @@
 package com.phonepe.magazine.impl.aerospike;
 
 import com.aerospike.client.Bin;
+import com.aerospike.client.AerospikeException;
+import com.aerospike.client.BatchRead;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
+import com.aerospike.client.ResultCode;
+import com.aerospike.client.exp.Exp;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
@@ -36,6 +40,7 @@ import com.phonepe.dlm.lock.storage.aerospike.AerospikeStore;
 import com.phonepe.magazine.common.Constants;
 import com.phonepe.magazine.common.MagazineData;
 import com.phonepe.magazine.common.MetaData;
+import com.phonepe.magazine.MagazineContext;
 import com.phonepe.magazine.core.BaseMagazineStorage;
 import com.phonepe.magazine.core.StorageType;
 import com.phonepe.magazine.exception.ErrorCode;
@@ -43,21 +48,23 @@ import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.scope.MagazineScope;
 import com.phonepe.magazine.util.CommonUtils;
 import com.phonepe.magazine.util.ErrorMessage;
-import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.security.SecureRandom;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 @Getter
@@ -72,7 +79,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final AerospikeRetryerFactory<Object> retryerFactory;
     private final Class<T> clazz;
     private final Random random = new SecureRandom();
-    private final AsyncLoadingCache<String, List<String>> activeShardsCache;
+    @Getter(AccessLevel.NONE)
+    private final String[] shardIds;
+    private final AsyncLoadingCache<MagazineContext, List<String>> activeShardsCache;
     private final DistributedLockManager lockManager;
     private final LockLevel lockLevel;
 
@@ -94,6 +103,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.dataSetName = CommonUtils.resolveSetName(storageConfig.getDataSetName(), farmId, scope);
         this.metaSetName = CommonUtils.resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
         this.retryerFactory = new AerospikeRetryerFactory<>();
+        this.shardIds = createShardIds();
         this.activeShardsCache = initializeCache();
         if (enableDeDupe) {
             this.lockManager = new DistributedLockManager(Constants.DLM_CLIENT_ID, farmId,
@@ -114,8 +124,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean load(final String magazineIdentifier,
+    public boolean load(final MagazineContext context,
             final T data) {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         validateDataType(data);
         Lock lock = null;
         boolean lockAcquired = false;
@@ -128,11 +139,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             }
             if (!isEnableDeDupe() || !alreadyExists(magazineIdentifier, data)) {
                 final Integer selectedShard = selectShard();
-                final long loadPointer = incrementAndGetLoadPointer(magazineIdentifier, selectedShard);
+                final long loadPointer = incrementAndGetLoadPointer(context, selectedShard);
                 final String key = createKey(magazineIdentifier, selectedShard, String.valueOf(loadPointer));
                 final boolean success = loadData(key, data);
                 if (success) {
-                    incrementLoadCounter(magazineIdentifier, selectedShard);
+                    incrementLoadCounter(context, selectedShard);
                 }
                 if (isEnableDeDupe()) {
                     storeDataForDeDupe(magazineIdentifier, data);
@@ -148,8 +159,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public boolean reload(final String magazineIdentifier,
+    public boolean reload(final MagazineContext context,
             final T data) {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         validateDataType(data);
         Lock lock = null;
         boolean lockAcquired = false;
@@ -162,11 +174,11 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             }
 
             final Integer selectedShard = selectShard();
-            final long loadPointer = incrementAndGetLoadPointer(magazineIdentifier, selectedShard);
+            final long loadPointer = incrementAndGetLoadPointer(context, selectedShard);
             final String key = createKey(magazineIdentifier, selectedShard, String.valueOf(loadPointer));
             final boolean success = loadData(key, data);
             if (success) {
-                decrementFireCounter(magazineIdentifier, selectedShard);
+                decrementFireCounter(context, selectedShard);
             }
             return success;
         } catch (Exception e) {
@@ -177,50 +189,54 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public MagazineData<T> fire(final String magazineIdentifier) {
-        return fireWithRetry(magazineIdentifier);
+    public MagazineData<T> fire(final MagazineContext context) {
+        return fireWithRetry(context);
     }
 
     @Override
-    public Map<String, MetaData> getMetaData(final String magazineIdentifier) {
+    public Map<String, MetaData> getMetaData(final MagazineContext context) {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         try {
-            final Record[] counterRecords = (Record[]) retryerFactory.getRetryer()
-                    .call(() -> {
-                        Key[] keys = createMetaKeys(magazineIdentifier, Constants.COUNTERS);
-                        return aerospikeClient.get(aerospikeClient.getBatchPolicyDefault(), keys);
-                    });
+            final boolean unifiedMetadata = usesUnifiedMetadata(context);
+            final Record[] pointerRecords = getMetaRecords(magazineIdentifier,
+                    unifiedMetadata ? Constants.METADATA : Constants.POINTERS);
+            final Record[] counterRecords = unifiedMetadata
+                    ? pointerRecords
+                    : getMetaRecords(magazineIdentifier, Constants.COUNTERS);
 
-            final Record[] pointerRecords = (Record[]) retryerFactory.getRetryer()
-                    .call(() -> {
-                        Key[] keys = createMetaKeys(magazineIdentifier, Constants.POINTERS);
-                        return aerospikeClient.get(aerospikeClient.getBatchPolicyDefault(), keys);
-                    });
-
-            return IntStream.range(0, getShards())
-                    .boxed()
-                    .collect(Collectors.toMap(
-                            i -> String.join(Constants.KEY_DELIMITER, Constants.SHARD_PREFIX, String.valueOf(i)),
-                            i -> MetaData.builder()
-                                    .fireCounter(Objects.nonNull(counterRecords[i])
-                                            ? counterRecords[i].getLong(Constants.FIRE_COUNTER)
-                                            : 0L)
-                                    .loadCounter(Objects.nonNull(counterRecords[i])
-                                            ? counterRecords[i].getLong(Constants.LOAD_COUNTER)
-                                            : 0L)
-                                    .firePointer(Objects.nonNull(pointerRecords[i])
-                                            ? pointerRecords[i].getLong(Constants.FIRE_POINTER)
-                                            : 0L)
-                                    .loadPointer(Objects.nonNull(pointerRecords[i])
-                                            ? pointerRecords[i].getLong(Constants.LOAD_POINTER)
-                                            : 0L)
-                                    .build()));
+            final Map<String, MetaData> metaData = new HashMap<>(getShards());
+            for (int shard = 0; shard < getShards(); shard++) {
+                final Record pointerRecord = pointerRecords[shard];
+                final Record counterRecord = counterRecords[shard];
+                metaData.put(shardIds[shard], new MetaData(
+                        Objects.nonNull(counterRecord)
+                                ? counterRecord.getLong(Constants.FIRE_COUNTER)
+                                : 0L,
+                        Objects.nonNull(counterRecord)
+                                ? counterRecord.getLong(Constants.LOAD_COUNTER)
+                                : 0L,
+                        Objects.nonNull(pointerRecord)
+                                ? pointerRecord.getLong(Constants.FIRE_POINTER)
+                                : 0L,
+                        Objects.nonNull(pointerRecord)
+                                ? pointerRecord.getLong(Constants.LOAD_POINTER)
+                                : 0L));
+            }
+            return metaData;
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_GETTING_META_DATA, magazineIdentifier, null);
         }
     }
 
     @Override
-    public void delete(final MagazineData<T> magazineData) {
+    public void delete(final MagazineContext context, final MagazineData<T> magazineData) {
+        if (!context.getMagazineIdentifier().equals(magazineData.getMagazineIdentifier())) {
+            throw invalidConfiguration("Magazine data belongs to a different magazine.");
+        }
+        deleteData(magazineData);
+    }
+
+    private void deleteData(final MagazineData<T> magazineData) {
         try {
             final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
             retryerFactory.getRetryer()
@@ -236,31 +252,49 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     @Override
-    public Set<MagazineData<T>> peek(final String magazineIdentifier,
+    public Set<MagazineData<T>> peek(final MagazineContext context,
+            final Map<Integer, Set<Long>> shardPointersMap) {
+        return peekData(context.getMagazineIdentifier(), shardPointersMap);
+    }
+
+    private Set<MagazineData<T>> peekData(final String magazineIdentifier,
             final Map<Integer, Set<Long>> shardPointersMap) {
         try {
-            // Builds keys
-            final List<Pair<Key, MagazineData.MagazineDataBuilder<T>>> keyAndMagazineDataBuilderList =
-                    buildKeyAndMagazineDataList(magazineIdentifier, shardPointersMap);
+            final List<PeekRequest> requests = new ArrayList<>();
+            final List<BatchRead> batchReads = new ArrayList<>();
+            for (Map.Entry<Integer, Set<Long>> entry : shardPointersMap.entrySet()) {
+                for (long pointer : entry.getValue()) {
+                    final Key key = new Key(namespace, dataSetName,
+                            createKey(magazineIdentifier, entry.getKey(), String.valueOf(pointer)));
+                    batchReads.add(new BatchRead(key, true));
+                    requests.add(new PeekRequest(entry.getKey(), pointer));
+                }
+            }
 
-            // Fetch records
-            final Record[] records = (Record[]) retryerFactory.getRetryer()
-                    .call(() -> aerospikeClient.get(
-                            aerospikeClient.getBatchPolicyDefault(),
-                             keyAndMagazineDataBuilderList.stream()
-                                     .map(Pair::getKey)
-                                     .toList()
-                                     .toArray(Key[]::new))
-                     );
+            retryerFactory.getRetryer()
+                    .call(() -> aerospikeClient.get(aerospikeClient.getBatchPolicyDefault(), batchReads));
 
-            return IntStream.range(0, keyAndMagazineDataBuilderList.size())
-                    .boxed()
-                    .filter(i -> Objects.nonNull(records[i]))
-                    .map(i -> keyAndMagazineDataBuilderList.get(i)
-                            .getRight()
-                            .data(clazz.cast(records[i].getValue(Constants.DATA)))
-                            .build())
-                    .collect(Collectors.toSet());
+            final Set<MagazineData<T>> magazineData = new HashSet<>(requests.size());
+            for (int i = 0; i < requests.size(); i++) {
+                final BatchRead batchRead = batchReads.get(i);
+                if (batchRead.resultCode != ResultCode.OK
+                        && batchRead.resultCode != ResultCode.KEY_NOT_FOUND_ERROR) {
+                    throw MagazineException.builder()
+                            .errorCode(ErrorCode.CONNECTION_ERROR)
+                            .message(String.format(ErrorMessage.ERROR_PEEKING_DATA, magazineIdentifier))
+                            .build();
+                }
+                final Record record = batchRead.record;
+                if (Objects.nonNull(record)) {
+                    final PeekRequest request = requests.get(i);
+                    magazineData.add(new MagazineData<>(
+                            clazz.cast(record.getValue(Constants.DATA)),
+                            request.pointer(),
+                            request.shard(),
+                            magazineIdentifier));
+                }
+            }
+            return magazineData;
         } catch (Exception e) {
             throw handleException(e, ErrorMessage.ERROR_PEEKING_DATA, magazineIdentifier, null);
         }
@@ -283,37 +317,48 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     // Retry until the record is non-null, the queue is empty, or the retry limit is reached.
     @SuppressWarnings("unchecked")
-    private MagazineData<T> fireWithRetry(final String magazineIdentifier) {
+    private MagazineData<T> fireWithRetry(final MagazineContext context) {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         try {
             return (MagazineData<T>) retryerFactory.getFireRetryer()
                     .call(() -> {
-                        final Integer selectedShard = getRandomShardForFire(magazineIdentifier);
+                        final Integer selectedShard = getRandomShardForFire(context);
+                        final boolean unifiedMetadata = usesUnifiedMetadata(context);
 
-                        final Record pointerRecord = (Record) retryerFactory.getRetryer()
-                                .call(() -> {
-                                    final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
-                                    return aerospikeClient.get(aerospikeClient.getReadPolicyDefault(),
-                                            new Key(namespace, metaSetName, key));
-                                });
-                        final long currentLoadPointer = pointerRecord.getLong(Constants.LOAD_POINTER);
-                        final long currentFirePointer = pointerRecord.getLong(Constants.FIRE_POINTER);
+                        final String metadataKey = createKey(
+                                magazineIdentifier, selectedShard,
+                                unifiedMetadata ? Constants.METADATA : Constants.POINTERS);
+                        final Record metadataRecord = (Record) retryerFactory.getRetryer()
+                                .call(() -> aerospikeClient.get(aerospikeClient.getReadPolicyDefault(),
+                                            new Key(namespace, metaSetName, metadataKey)));
+                        if (Objects.isNull(metadataRecord)) {
+                            suppressActiveShard(context, selectedShard);
+                            return null;
+                        }
+                        final long currentLoadPointer = metadataRecord.getLong(Constants.LOAD_POINTER);
+                        final long currentFirePointer = metadataRecord.getLong(Constants.FIRE_POINTER);
 
                         MagazineData<T> magazineData = null;
                         if (currentFirePointer < currentLoadPointer) {
-                            final long firePointer = incrementAndGetFirePointer(magazineIdentifier, selectedShard)
-                                    .getLong(Constants.FIRE_POINTER);
+                            final long firePointer = currentFirePointer + 1;
                             final Record dataRecord = fireData(magazineIdentifier, selectedShard, firePointer);
-                            if (Objects.nonNull(dataRecord)) {
+                            if (claimFirePointer(metadataKey, currentFirePointer,
+                                    Objects.nonNull(dataRecord), unifiedMetadata)) {
+                                if (Objects.isNull(dataRecord)) {
+                                    return null;
+                                }
                                 magazineData = MagazineData.<T>builder()
                                         .firePointer(firePointer)
                                         .shard(selectedShard)
                                         .magazineIdentifier(magazineIdentifier)
                                         .data(clazz.cast(dataRecord.getValue(Constants.DATA)))
                                         .build();
-                                incrementFireCounter(magazineIdentifier, selectedShard);
+                                if (!unifiedMetadata) {
+                                    incrementFireCounter(context, selectedShard);
+                                }
                             }
                         } else {
-                            suppressActiveShard(magazineIdentifier, selectedShard);
+                            suppressActiveShard(context, selectedShard);
                         }
                         return magazineData;
                     });
@@ -342,17 +387,54 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 });
     }
 
-    private long incrementAndGetLoadPointer(final String magazineIdentifier,
+    private boolean claimFirePointer(final String metadataKey,
+            final long expectedFirePointer,
+            final boolean incrementCounter,
+            final boolean unifiedMetadata) {
+        final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
+        writePolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
+        writePolicy.maxRetries = 0;
+        writePolicy.failOnFilteredOut = true;
+        writePolicy.filterExp = Exp.build(expectedFirePointer == 0L
+                ? Exp.or(
+                        Exp.not(Exp.binExists(Constants.FIRE_POINTER)),
+                        Exp.eq(Exp.intBin(Constants.FIRE_POINTER), Exp.val(0L)))
+                : Exp.eq(Exp.intBin(Constants.FIRE_POINTER), Exp.val(expectedFirePointer)));
+        writePolicy.expiration = getMetaDataTtl();
+
+        try {
+            if (incrementCounter && unifiedMetadata) {
+                aerospikeClient.operate(writePolicy,
+                        new Key(namespace, metaSetName, metadataKey),
+                        Operation.add(new Bin(Constants.FIRE_POINTER, 1L)),
+                        Operation.add(new Bin(Constants.FIRE_COUNTER, 1L)));
+            } else {
+                aerospikeClient.operate(writePolicy,
+                        new Key(namespace, metaSetName, metadataKey),
+                        Operation.add(new Bin(Constants.FIRE_POINTER, 1L)));
+            }
+            return true;
+        } catch (AerospikeException e) {
+            if (e.getResultCode() == ResultCode.FILTERED_OUT) {
+                return false;
+            }
+            throw e;
+        }
+    }
+
+    private long incrementAndGetLoadPointer(final MagazineContext context,
             final Integer selectedShard)
             throws ExecutionException,
             RetryException {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                     writePolicy.expiration = getMetaDataTtl();
 
-                    final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
+                    final String key = createKey(magazineIdentifier, selectedShard,
+                            metadataSuffix(context, Constants.POINTERS));
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
                             Operation.add(new Bin(Constants.LOAD_POINTER, 1L)),
@@ -368,34 +450,18 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         return magazineRecord.getLong(Constants.LOAD_POINTER);
     }
 
-    private Record incrementAndGetFirePointer(final String magazineIdentifier,
-            final Integer selectedShard)
-            throws ExecutionException,
-            RetryException {
-        return (Record) retryerFactory.getRetryer()
-                .call(() -> {
-                    final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
-                    writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
-                    writePolicy.expiration = getMetaDataTtl();
-
-                    final String key = createKey(magazineIdentifier, selectedShard, Constants.POINTERS);
-                    return aerospikeClient.operate(writePolicy,
-                            new Key(namespace, metaSetName, key),
-                            Operation.add(new Bin(Constants.FIRE_POINTER, 1)),
-                            Operation.get(Constants.FIRE_POINTER));
-                });
-    }
-
-    private void incrementLoadCounter(final String magazineIdentifier,
+    private void incrementLoadCounter(final MagazineContext context,
             final Integer selectedShard)
             throws ExecutionException, RetryException {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                     writePolicy.expiration = getMetaDataTtl();
 
-                    final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
+                    final String key = createKey(magazineIdentifier, selectedShard,
+                            metadataSuffix(context, Constants.COUNTERS));
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
                             Operation.add(new Bin(Constants.LOAD_COUNTER, 1L)),
@@ -410,16 +476,16 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
     }
 
-    private void incrementFireCounter(final String magazineIdentifier,
-            final Integer shard) throws ExecutionException,
-            RetryException {
+    private void incrementFireCounter(final MagazineContext context,
+            final Integer selectedShard) throws ExecutionException, RetryException {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                     writePolicy.expiration = getMetaDataTtl();
 
-                    final String key = createKey(magazineIdentifier, shard, Constants.COUNTERS);
+                    final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
                             Operation.add(new Bin(Constants.FIRE_COUNTER, 1L)),
@@ -434,17 +500,19 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
     }
 
-    private void decrementFireCounter(final String magazineIdentifier,
+    private void decrementFireCounter(final MagazineContext context,
             final Integer selectedShard)
             throws ExecutionException,
             RetryException {
+        final String magazineIdentifier = context.getMagazineIdentifier();
         final Record magazineRecord = (Record) retryerFactory.getRetryer()
                 .call(() -> {
                     final WritePolicy writePolicy = new WritePolicy(aerospikeClient.getWritePolicyDefault());
                     writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
                     writePolicy.expiration = getMetaDataTtl();
 
-                    final String key = createKey(magazineIdentifier, selectedShard, Constants.COUNTERS);
+                    final String key = createKey(magazineIdentifier, selectedShard,
+                            metadataSuffix(context, Constants.COUNTERS));
                     return aerospikeClient.operate(writePolicy,
                             new Key(namespace, metaSetName, key),
                             Operation.add(new Bin(Constants.FIRE_COUNTER, -1L)),
@@ -460,24 +528,23 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     // Select any random shard from active shards to fire data
-    private Integer getRandomShardForFire(final String magazineIdentifier) throws InterruptedException,
+    private Integer getRandomShardForFire(final MagazineContext context) throws InterruptedException,
             ExecutionException {
-        final List<String> activeShards = getActiveShards(magazineIdentifier);
+        final List<String> activeShards = getActiveShards(context);
         return getShards() > 1
-                ? Integer.parseInt(activeShards.get(random.nextInt(activeShards.size()))
-                .split(Constants.KEY_DELIMITER)[1])
+                ? parseShard(activeShards.get(ThreadLocalRandom.current().nextInt(activeShards.size())))
                 : null;
     }
 
     // Get active shards from cache and throw exception if there is nothing to fire in any shard
-    private List<String> getActiveShards(final String magazineIdentifier) throws InterruptedException,
+    private List<String> getActiveShards(final MagazineContext context) throws InterruptedException,
             ExecutionException {
-        final List<String> activeShards = activeShardsCache.get(magazineIdentifier)
+        final List<String> activeShards = activeShardsCache.get(context)
                 .get();
         if (activeShards.isEmpty()) {
             throw MagazineException.builder()
                     .errorCode(ErrorCode.NOTHING_TO_FIRE)
-                    .message(String.format(ErrorMessage.NO_DATA_TO_FIRE, magazineIdentifier))
+                    .message(String.format(ErrorMessage.NO_DATA_TO_FIRE, context.getMagazineIdentifier()))
                     .build();
         }
         return activeShards;
@@ -488,37 +555,79 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final Integer shard,
             final String suffix) {
         return Objects.nonNull(shard)
-                ? String.join(Constants.KEY_DELIMITER,
-                magazineIdentifier,
-                Constants.SHARD_PREFIX,
-                String.valueOf(shard),
-                suffix)
-                : String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix);
+                ? magazineIdentifier + Constants.KEY_DELIMITER + getShardId(shard)
+                + Constants.KEY_DELIMITER + suffix
+                : magazineIdentifier + Constants.KEY_DELIMITER + suffix;
     }
 
     // Generate keys for batch read in case of sharded magazine
     private Key[] createMetaKeys(final String magazineIdentifier,
             final String suffix) {
-        return getShards() > 1
-                ? IntStream.range(0, getShards())
-                .boxed()
-                .map(shard -> new Key(namespace,
-                        metaSetName,
-                        String.join(Constants.KEY_DELIMITER,
-                                magazineIdentifier,
-                                Constants.SHARD_PREFIX,
-                                String.valueOf(shard),
-                                suffix)))
-                .toArray(Key[]::new)
-                : new Key[]{new Key(namespace,
-                        metaSetName,
-                        String.join(Constants.KEY_DELIMITER, magazineIdentifier, suffix))};
+        if (getShards() == 1) {
+            return new Key[]{new Key(namespace,
+                    metaSetName,
+                    magazineIdentifier + Constants.KEY_DELIMITER + suffix)};
+        }
+
+        final Key[] keys = new Key[getShards()];
+        for (int shard = 0; shard < getShards(); shard++) {
+            keys[shard] = new Key(namespace,
+                    metaSetName,
+                    magazineIdentifier + Constants.KEY_DELIMITER + shardIds[shard]
+                            + Constants.KEY_DELIMITER + suffix);
+        }
+        return keys;
+    }
+
+    private Record[] getMetaRecords(final String magazineIdentifier,
+            final String suffix)
+            throws ExecutionException, RetryException {
+        return (Record[]) retryerFactory.getRetryer()
+                .call(() -> aerospikeClient.get(
+                        aerospikeClient.getBatchPolicyDefault(),
+                        createMetaKeys(magazineIdentifier, suffix)));
+    }
+
+    private List<String> getActiveShardsFromMetadata(final MagazineContext context) {
+        final String magazineIdentifier = context.getMagazineIdentifier();
+        try {
+            final boolean unifiedMetadata = usesUnifiedMetadata(context);
+            final Record[] pointerRecords = getMetaRecords(magazineIdentifier,
+                    unifiedMetadata ? Constants.METADATA : Constants.POINTERS);
+            final Record[] counterRecords = unifiedMetadata
+                    ? pointerRecords
+                    : getMetaRecords(magazineIdentifier, Constants.COUNTERS);
+            final List<String> activeShards = new ArrayList<>(getShards());
+            for (int shard = 0; shard < getShards(); shard++) {
+                final Record pointerRecord = pointerRecords[shard];
+                final Record counterRecord = counterRecords[shard];
+                if (Objects.nonNull(pointerRecord)
+                        && Objects.nonNull(counterRecord)
+                        && counterRecord.getLong(Constants.LOAD_COUNTER)
+                        > counterRecord.getLong(Constants.FIRE_COUNTER)
+                        && pointerRecord.getLong(Constants.LOAD_POINTER)
+                        > pointerRecord.getLong(Constants.FIRE_POINTER)) {
+                    activeShards.add(shardIds[shard]);
+                }
+            }
+            return List.copyOf(activeShards);
+        } catch (Exception e) {
+            throw handleException(e, ErrorMessage.ERROR_GETTING_META_DATA, magazineIdentifier, null);
+        }
+    }
+
+    private String metadataSuffix(final MagazineContext context, final String legacySuffix) {
+        return usesUnifiedMetadata(context) ? Constants.METADATA : legacySuffix;
+    }
+
+    private boolean usesUnifiedMetadata(final MagazineContext context) {
+        return context.getMetadataSchemaVersion() == Constants.UNIFIED_METADATA_SCHEMA_VERSION;
     }
 
     // return null if magazine is unsharded or have 1 shard, else select any random shard
     private Integer selectShard() {
         return getShards() > 1
-                ? random.nextInt(getShards())
+                ? ThreadLocalRandom.current().nextInt(getShards())
                 : null;
     }
 
@@ -555,52 +664,38 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         );
     }
 
-    private List<Pair<Key, MagazineData.MagazineDataBuilder<T>>> buildKeyAndMagazineDataList(
-            final String magazineIdentifier,
-            final Map<Integer, Set<Long>> shardPointersMap) {
-        return shardPointersMap.entrySet()
-                .stream()
-                .flatMap(shardPointersEntry ->
-                        shardPointersEntry.getValue()
-                                .stream()
-                                .map(pointer -> Pair.of(
-                                        createKey(magazineIdentifier, shardPointersEntry.getKey(),
-                                                String.valueOf(pointer)),
-                                        MagazineData.<T>builder()
-                                                .firePointer(pointer)
-                                                .shard(shardPointersEntry.getKey())
-                                                .magazineIdentifier(magazineIdentifier)
-                                ))
-                                .collect(Collectors.toSet())
-                                .stream()
-                )
-                .map(keyAndMagazineDataPair -> Pair.of(
-                        new Key(namespace, dataSetName, keyAndMagazineDataPair.getLeft()),
-                        keyAndMagazineDataPair.getRight()
-                ))
-                .toList();
+    private String[] createShardIds() {
+        final String[] ids = new String[getShards()];
+        for (int shard = 0; shard < getShards(); shard++) {
+            ids[shard] = Constants.SHARD_PREFIX + Constants.KEY_DELIMITER + shard;
+        }
+        return ids;
     }
 
-    private AsyncLoadingCache<String, List<String>> initializeCache() {
+    private String getShardId(final int shard) {
+        return shard >= 0 && shard < shardIds.length
+                ? shardIds[shard]
+                : Constants.SHARD_PREFIX + Constants.KEY_DELIMITER + shard;
+    }
+
+    private int parseShard(final String shardId) {
+        return Integer.parseInt(shardId, Constants.SHARD_PREFIX.length() + 1, shardId.length(), 10);
+    }
+
+    private AsyncLoadingCache<MagazineContext, List<String>> initializeCache() {
         return Caffeine.newBuilder()
                 .maximumSize(Constants.DEFAULT_MAX_ELEMENTS)
                 .refreshAfterWrite(Constants.DEFAULT_REFRESH, TimeUnit.SECONDS)
-                .buildAsync(key -> getMetaData(key).entrySet()
-                        .stream()
-                        .filter(entry -> {
-                            final MetaData metaData = entry.getValue();
-                            return ((metaData.getLoadCounter() > metaData.getFireCounter())
-                                    && (metaData.getLoadPointer() > metaData.getFirePointer()));
-                        })
-                        .map(Map.Entry::getKey)
-                .toList());
+                .buildAsync(this::getActiveShardsFromMetadata);
     }
 
-    private void suppressActiveShard(final String magazineIdentifier, final Integer shard) {
-        final String shardId = String.join(Constants.KEY_DELIMITER, Constants.SHARD_PREFIX,
-                String.valueOf(Objects.isNull(shard) ? 0 : shard));
-        activeShardsCache.synchronous().asMap().computeIfPresent(magazineIdentifier,
-                (key, activeShards) -> activeShards.stream()
+    private record PeekRequest(Integer shard, long pointer) {
+    }
+
+    private void suppressActiveShard(final MagazineContext context, final Integer shard) {
+        final String shardId = shardIds[Objects.isNull(shard) ? 0 : shard];
+        activeShardsCache.synchronous().asMap().computeIfPresent(context,
+                (cacheKey, activeShards) -> activeShards.stream()
                         .filter(activeShard -> !shardId.equals(activeShard))
                         .toList());
     }

@@ -45,7 +45,7 @@ Magazine<String> magazine = Magazine.<String>builder()
 
 ## Loading Data
 
-Enqueue data into the magazine. Each call atomically increments the load pointer and load counter for the selected shard.
+Enqueue data into the magazine. Each successful call advances the load pointer and, after storing the data, increments the load counter for the selected shard.
 
 ```java
 boolean success = magazine.load("order-12345");

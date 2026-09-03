@@ -19,10 +19,7 @@ Magazine<T> magazine = Magazine.<T>builder()
 | `magazineIdentifier` | `String` | Unique identifier for this magazine. |
 
 !!! note "Validation on construction"
-    The constructor validates the storage backend. For Aerospike, it checks whether shard metadata exists and verifies shard count constraints:
-
-    - You **cannot decrease** the shard count of an existing magazine.
-    - You **cannot convert** an unsharded magazine (shards ≤ 1) to a sharded one (shards > 1).
+    The constructor validates the storage backend. For Aerospike, shard count cannot decrease and an unsharded magazine cannot become sharded; accepted increases are persisted. New magazines record metadata schema version 2; versionless magazines continue using the legacy metadata layout.
 
 ### Methods
 
@@ -81,12 +78,14 @@ Abstract base class for storage implementations. Aerospike is currently the only
 
 | Method | Description |
 |--------|-------------|
-| `load(String magazineIdentifier, T data)` | Persist data into the named magazine. |
-| `reload(String magazineIdentifier, T data)` | Re-persist data (fire counter adjustment). |
-| `fire(String magazineIdentifier)` | Consume next item from the named magazine. |
-| `getMetaData(String magazineIdentifier)` | Read per-shard metadata. |
-| `delete(MagazineData<T> magazineData)` | Delete a specific record. |
-| `peek(String magazineIdentifier, Map<Integer, Set<Long>> shardPointersMap)` | Read without consuming. |
+| `load(MagazineContext context, T data)` | Persist data into the context's magazine. |
+| `reload(MagazineContext context, T data)` | Re-persist data (fire counter adjustment). |
+| `fire(MagazineContext context)` | Consume the next item from the context's magazine. |
+| `getMetaData(MagazineContext context)` | Read per-shard metadata. |
+| `delete(MagazineContext context, MagazineData<T> magazineData)` | Delete a specific record. |
+| `peek(MagazineContext context, Map<Integer, Set<Long>> shardPointersMap)` | Read without consuming. |
+
+`Magazine` passes an immutable `MagazineContext` to storage operations so the resolved metadata schema version does not need to be read on every call.
 
 ---
 

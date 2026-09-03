@@ -16,12 +16,7 @@
 
 package com.phonepe.magazine;
 
-import com.aerospike.client.Bin;
-import com.aerospike.client.Key;
-import com.aerospike.client.Record;
-import com.aerospike.client.policy.WritePolicy;
 import com.github.rholder.retry.RetryException;
-import com.phonepe.magazine.common.Constants;
 import com.phonepe.magazine.common.MagazineData;
 import com.phonepe.magazine.common.MetaData;
 import com.phonepe.magazine.core.BaseMagazineStorage;
@@ -35,12 +30,16 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import lombok.Builder;
 import lombok.Data;
+import lombok.AccessLevel;
+import lombok.Getter;
 
 @Data
 public class Magazine<T> {
 
     private final BaseMagazineStorage<T> baseMagazineStorage;
     private final String magazineIdentifier;
+    @Getter(AccessLevel.NONE)
+    private final MagazineContext context;
 
     @Builder
     public Magazine(final BaseMagazineStorage<T> baseMagazineStorage,
@@ -53,7 +52,7 @@ public class Magazine<T> {
         }
         this.magazineIdentifier = magazineIdentifier;
         this.baseMagazineStorage = baseMagazineStorage;
-        validateStorage(baseMagazineStorage);
+        this.context = new MagazineContext(magazineIdentifier, validateStorage(baseMagazineStorage));
     }
 
     /**
@@ -63,7 +62,7 @@ public class Magazine<T> {
      * @return True if the data was successfully loaded, false otherwise.
      */
     public boolean load(final T data) {
-        return baseMagazineStorage.load(magazineIdentifier, data);
+        return baseMagazineStorage.load(context, data);
     }
 
     /**
@@ -74,7 +73,7 @@ public class Magazine<T> {
      * @return True if the data was successfully reloaded, false otherwise.
      */
     public boolean reload(final T data) {
-        return baseMagazineStorage.reload(magazineIdentifier, data);
+        return baseMagazineStorage.reload(context, data);
     }
 
     /**
@@ -83,7 +82,7 @@ public class Magazine<T> {
      * @return The MagazineData containing the fired data.
      */
     public MagazineData<T> fire() {
-        return baseMagazineStorage.fire(magazineIdentifier);
+        return baseMagazineStorage.fire(context);
     }
 
     /**
@@ -92,7 +91,7 @@ public class Magazine<T> {
      * @param magazineData The MagazineData to be deleted.
      */
     public void delete(final MagazineData<T> magazineData) {
-        baseMagazineStorage.delete(magazineData);
+        baseMagazineStorage.delete(context, magazineData);
     }
 
     /**
@@ -101,7 +100,7 @@ public class Magazine<T> {
      * @return A map containing metadata information.
      */
     public Map<String, MetaData> getMetaData() {
-        return baseMagazineStorage.getMetaData(magazineIdentifier);
+        return baseMagazineStorage.getMetaData(context);
     }
 
     /**
@@ -111,63 +110,18 @@ public class Magazine<T> {
      * @return A set of MagazineData containing the peeked data.
      */
     public Set<MagazineData<T>> peek(final Map<Integer, Set<Long>> shardPointersMap) {
-        return baseMagazineStorage.peek(magazineIdentifier, shardPointersMap);
+        return baseMagazineStorage.peek(context, shardPointersMap);
     }
 
     @SuppressWarnings("unchecked")
-    private void validateStorage(final BaseMagazineStorage<T> baseMagazineStorage)
+    private int validateStorage(final BaseMagazineStorage<T> baseMagazineStorage)
             throws ExecutionException, RetryException {
-        baseMagazineStorage.getType()
-                .accept(new StorageTypeVisitor<Boolean>() {
+        return baseMagazineStorage.getType()
+                .accept(new StorageTypeVisitor<Integer>() {
                     @Override
-                    public Boolean visitAerospike() throws ExecutionException, RetryException {
+                    public Integer visitAerospike() throws ExecutionException, RetryException {
                         final AerospikeStorage<T> storage = (AerospikeStorage) baseMagazineStorage;
-
-                        final Record magazineRecord = (Record) storage.getRetryerFactory()
-                                .getRetryer()
-                                .call(() ->
-                                        storage.getAerospikeClient()
-                                                .get(storage.getAerospikeClient()
-                                                                .getReadPolicyDefault(),
-                                                        new Key(storage.getNamespace(),
-                                                                storage.getMetaSetName(),
-                                                                String.join(Constants.KEY_DELIMITER, magazineIdentifier,
-                                                                        Constants.SHARDS_BIN))));
-
-                        if (Objects.isNull(magazineRecord)) {
-                            final WritePolicy writePolicy = new WritePolicy(storage.getAerospikeClient()
-                                    .getWritePolicyDefault());
-                            writePolicy.expiration = Constants.SHARD_CONFIGURATION_TTL_SECONDS;
-                            storage.getRetryerFactory()
-                                    .getRetryer()
-                                    .call(() -> {
-                                        storage.getAerospikeClient()
-                                                .put(writePolicy,
-                                                        new Key(storage.getNamespace(),
-                                                                storage.getMetaSetName(),
-                                                                String.join(Constants.KEY_DELIMITER, magazineIdentifier,
-                                                                        Constants.SHARDS_BIN)),
-                                                        new Bin(Constants.SHARDS_BIN, storage.getShards()));
-                                        return null;
-                                    });
-                            return true;
-                        }
-
-                        final int storedShards = magazineRecord.getInt(Constants.SHARDS_BIN);
-                        if (storedShards > storage.getShards()) {
-                            throw MagazineException.builder()
-                                    .errorCode(ErrorCode.INVALID_SHARDS)
-                                    .message("Cannot decrease shards of a magazine.")
-                                    .build();
-                        }
-                        if (storedShards <= 1 && storage.getShards() > 1) {
-                            throw MagazineException.builder()
-                                    .errorCode(ErrorCode.INVALID_SHARDS)
-                                    .message("Cannot convert unsharded to sharded magazine.")
-                                    .build();
-                        }
-
-                        return true;
+                        return AerospikeMagazineInitializer.initialize(storage, magazineIdentifier);
                     }
                 });
     }

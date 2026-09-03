@@ -43,7 +43,7 @@ These constants are defined in `com.phonepe.magazine.common.Constants` and are *
 
 ## Retry Configuration
 
-All Aerospike operations are wrapped in a `guava-retrying` retryer:
+Standard Aerospike reads and writes, including magazine initialization, are wrapped in a `guava-retrying` retryer. The filtered fire claim is deliberately attempted once because retrying an ambiguous write could consume another item:
 
 | Setting | Standard Operations | Fire Operations |
 |---------|---------------------|-----------------|
@@ -73,7 +73,7 @@ On magazine construction, the library validates shard configuration:
 | Rule | Enforcement |
 |------|-------------|
 | Cannot decrease shard count | Throws `MagazineException` with `INVALID_SHARDS` |
-| Cannot convert unsharded (≤ 1) to sharded (> 1) | Throws `MagazineException` with `INVALID_SHARDS` |
+| Cannot convert unsharded (<= 1) to sharded (> 1) | Throws `MagazineException` with `INVALID_SHARDS` |
 | Minimum shard count | Values below `1` throw `MagazineException` with `INVALID_SHARDS` |
 
 The shard-configuration record is retained for five years because it defines the persistent topology of a magazine. Recreating a magazine with an incompatible shard count before this record expires is rejected.
