@@ -159,7 +159,7 @@ MagazineData<Long> id = ids.fire();
 ```
 
 !!! note
-    `refresh()` replaces the internal magazine map. Call it whenever your magazine topology changes (e.g. on config reload).
+    `refresh()` atomically replaces the internal magazine map. Call it whenever your magazine topology changes (e.g. on config reload).
 
 ## De-duplication
 

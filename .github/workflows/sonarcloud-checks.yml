@@ -35,7 +35,7 @@ jobs:
         env:
           USER_NAME: ${{ secrets.PPE_USER_NAME }}
           ACCESS_TOKEN: ${{ secrets.PPE_ACCESS_TOKEN }}
-        run: mvn -B verify -Dsonar.skip=true
+        run: mvn -B -Pcoverage verify -Dsonar.skip=true
 
       # Switch the JVM to 21 ONLY to run the SonarCloud scanner.
       - name: Set up JDK 21 for Sonar
@@ -48,4 +48,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=PhonePe_Magazine
+        run: mvn -B -Pcoverage sonar:sonar -Dsonar.projectKey=PhonePe_Magazine

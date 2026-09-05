@@ -35,7 +35,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 
 - **Java 17** or later
 - **Apache Maven 3.8+**
-- **Docker** (for integration tests using Testcontainers)
+- **Docker** (for integration tests using Testcontainers 2)
 
 ### Build
 
@@ -94,7 +94,7 @@ mvn javadoc:javadoc
 - **Naming:** Use clear, descriptive names. Prefix test methods with `test` or use descriptive `should_X_when_Y` naming.
 - **Documentation:** Add Javadoc to all public classes and methods.
 - **Testing:**
-  - Unit tests with JUnit 4 and Mockito.
+  - Unit tests with JUnit 5 and Mockito.
   - Integration tests with Testcontainers for backend-specific logic.
   - Aim for meaningful coverage; don't just chase numbers.
 - **Dependencies:** Avoid adding new dependencies unless absolutely necessary. Discuss in the issue first.
@@ -113,4 +113,3 @@ mvn javadoc:javadoc
 ## License
 
 By contributing to Magazine, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
-

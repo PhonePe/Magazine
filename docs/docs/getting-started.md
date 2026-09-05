@@ -11,14 +11,18 @@
 ```xml
 <dependency>
   <groupId>com.phonepe</groupId>
-  <artifactId>magazine</artifactId>
+  <artifactId>magazine-core</artifactId>
   <version>${magazine.version}</version>
 </dependency>
 ```
 
-Replace `${magazine.version}` with the latest version from [Maven Central](https://central.sonatype.com/artifact/com.phonepe/magazine) or [GitHub Releases](https://github.com/PhonePe/Magazine/releases).
+Replace `${magazine.version}` with the latest version from [Maven Central](https://central.sonatype.com/artifact/com.phonepe/magazine-core) or [GitHub Releases](https://github.com/PhonePe/Magazine/releases).
+
+Magazine 2.0 moves the library artifact from `com.phonepe:magazine` to `com.phonepe:magazine-core`. Source-level Java package names are unchanged.
 
 ## Build Locally
+
+The Maven reactor root is the `com.phonepe:magazine` aggregator POM. It contains `magazine-core` (published as `com.phonepe:magazine-core`) and the optional `magazine-dw-bundle` Dropwizard integration.
 
 ```bash
 git clone https://github.com/PhonePe/Magazine.git
@@ -107,3 +111,4 @@ meta.forEach((shard, m) ->
 - [Usage](usage.md) — examples for all operations.
 - [API Reference](concepts/api-reference.md) — full method documentation.
 - [Storage Backend](backends/aerospike.md) — Aerospike configuration deep-dive.
+- [Dropwizard Bundle](dropwizard-bundle.md) — Dropwizard APIs and read-only operational UI.

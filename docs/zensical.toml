@@ -8,6 +8,7 @@ nav = [
   {"Home" = "index.md"},
   {"Getting Started" = "getting-started.md"},
   {"Usage" = "usage.md"},
+  {"Dropwizard Bundle" = "dropwizard-bundle.md"},
   {"Concepts" = [
     {"API Reference" = "concepts/api-reference.md"},
     {"Defaults & Configuration" = "concepts/defaults.md"},

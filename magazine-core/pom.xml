@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.phonepe</groupId>
+        <artifactId>magazine</artifactId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>magazine-core</artifactId>
+    <name>Magazine Core</name>
+    <description>Distributed persistent queue library</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.aerospike</groupId>
+            <artifactId>aerospike-client</artifactId>
+            <version>${aerospike.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.rholder</groupId>
+            <artifactId>guava-retrying</artifactId>
+            <version>${guava.retrying.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.phonepe</groupId>
+            <artifactId>DLM</artifactId>
+            <version>${DLM.version}</version>
+            <!--
+              DLM 1.0.2 ships both AerospikeStore and HBaseStore in one artifact. Magazine only
+              ever constructs AerospikeStore, and jdeps confirms the Aerospike path needs exactly
+              three external packages - com.aerospike.client(.policy), com.github.rholder.retry
+              and org.slf4j - all of which magazine-core already declares directly, at equal or
+              newer versions. Everything else DLM pulls is HBaseStore-only or test-only, and is
+              actively harmful to publish: hbase-shaded-client 2.0.1 (~40MB) drags in
+              log4j 1.2.17 (CVE-2019-17571, CVE-2022-23305, CVE-2021-4104) and junit 4.12 at
+              compile scope, plus jackson 2.9.6 which would silently downgrade Jackson for any
+              Dropwizard consumer.
+
+              So the blanket exclusion is deliberate and load-bearing, not sloppiness. Do not
+              remove it without re-running the jdeps check. It can be dropped wholesale once we
+              move to the dlm-aerospike artifact, which has no HBase surface.
+            -->
+            <exclusions>
+                <exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainer.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <sourcepath>${project.build.directory}/delomboked</sourcepath>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok-maven-plugin</artifactId>
+                <version>${lombok.maven.version}</version>
+                <executions>
+                    <execution><phase>generate-sources</phase><goals><goal>delombok</goal></goals></execution>
+                </executions>
+                <configuration>
+                    <addOutputDirectory>false</addOutputDirectory>
+                    <sourceDirectory>${project.basedir}/src/main/java</sourceDirectory>
+                    <outputDirectory>${project.build.directory}/delomboked</outputDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

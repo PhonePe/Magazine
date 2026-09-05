@@ -30,6 +30,7 @@ Magazine<T> magazine = Magazine.<T>builder()
 | `reload(T data)` | `boolean` | Re-enqueue data (decrements fire counter, not increment load counter). |
 | `delete(MagazineData<T> magazineData)` | `void` | Delete a specific record from the backend. |
 | `getMetaData()` | `Map<String, MetaData>` | Per-shard metadata (counters and pointers). |
+| `getShards()` | `int` | Read the configured shard count without exposing storage operations. |
 | `peek(Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read specific records without consuming. |
 
 ---
@@ -52,7 +53,7 @@ MagazineManager manager = new MagazineManager("my-client-id");
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `refresh(List<Magazine<?>> magazines)` | `void` | Register or replace all magazines in the internal map. |
+| `refresh(List<Magazine<?>> magazines)` | `void` | Atomically replace all registered magazines. |
 | `getMagazine(String magazineIdentifier)` | `Magazine<T>` | Retrieve a magazine by identifier. Throws `MagazineException` with `MAGAZINE_NOT_FOUND` if not found. |
 
 ---
@@ -144,6 +145,6 @@ Enum for supported backend types. Uses the Visitor pattern.
 
 ## Thread Safety
 
-- `MagazineManager` uses a `HashMap` internally — it is **not thread-safe** for concurrent `refresh()` and `getMagazine()` calls. Synchronise externally if needed.
+- `MagazineManager` publishes an immutable map on each `refresh()`, so concurrent readers observe either the previous or new complete registration set.
 - `Magazine<T>` delegates all operations to the storage backend. Thread safety depends on the backend implementation.
 - `AerospikeStorage<T>` is thread-safe for all operations. Distributed locks ensure safe concurrent writes when de-duplication is enabled.
