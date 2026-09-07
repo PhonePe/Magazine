@@ -1,22 +1,41 @@
+/**
+ * Copyright (c) 2025 Original Author(s), PhonePe India Pvt. Ltd.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.phonepe.magazine.demo;
+
+import com.phonepe.magazine.Magazine;
+import com.phonepe.magazine.MagazineBundle;
+import com.phonepe.magazine.config.MagazineBundleConfiguration;
+import com.phonepe.magazine.entity.MagazineData;
+import com.phonepe.magazine.entity.MetaData;
+import io.dropwizard.core.Application;
+import io.dropwizard.core.setup.Bootstrap;
+import io.dropwizard.core.setup.Environment;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.phonepe.magazine.Magazine;
-import com.phonepe.magazine.entity.MagazineData;
-import com.phonepe.magazine.entity.MetaData;
-import com.phonepe.magazine.MagazineBundle;
-import com.phonepe.magazine.config.MagazineBundleConfiguration;
-import io.dropwizard.core.Application;
-import io.dropwizard.core.setup.Bootstrap;
-import io.dropwizard.core.setup.Environment;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
-
-/** Test-only application for viewing the dashboard without Aerospike. */
+/**
+ * Test-only application for viewing the dashboard without Aerospike.
+ */
 public final class MagazineDashboardDemoApplication extends Application<MagazineDashboardDemoConfiguration> {
 
     private final MagazineBundle<MagazineDashboardDemoConfiguration> magazineBundle = new MagazineBundle<>() {
@@ -77,8 +96,8 @@ public final class MagazineDashboardDemoApplication extends Application<Magazine
 
     @SuppressWarnings("unchecked")
     private static Magazine<String> magazine(final String identifier,
-            final Map<String, MetaData> metadata,
-            final Set<MagazineData<String>> records) {
+                                             final Map<String, MetaData> metadata,
+                                             final Set<MagazineData<String>> records) {
         final Magazine<String> magazine = mock(Magazine.class);
         when(magazine.getMagazineIdentifier()).thenReturn(identifier);
         when(magazine.getShards()).thenReturn(metadata.size());

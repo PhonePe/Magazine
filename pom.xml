@@ -87,11 +87,18 @@
         <maven.surefire.plugin.version>3.5.2</maven.surefire.plugin.version>
         <maven.source.plugin.version>3.2.0</maven.source.plugin.version>
         <maven.javadoc.plugin.version>3.3.1</maven.javadoc.plugin.version>
-        <jacoco.maven.plugin.version>0.8.7</jacoco.maven.plugin.version>
+        <jacoco.maven.plugin.version>0.8.13</jacoco.maven.plugin.version>
         <maven.sonar.plugin.version>5.7.0.6970</maven.sonar.plugin.version>
         <sonatype.central.publishing.maven.plugin.version>0.11.0</sonatype.central.publishing.maven.plugin.version>
-        <maven.release.plugin.version>2.5.3</maven.release.plugin.version>
-        <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
+        <maven.gpg.plugin.version>3.2.7</maven.gpg.plugin.version>
+        <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+        <maven.clean.plugin.version>3.4.0</maven.clean.plugin.version>
+        <maven.install.plugin.version>3.1.3</maven.install.plugin.version>
+        <maven.deploy.plugin.version>3.1.3</maven.deploy.plugin.version>
+        <maven.site.plugin.version>3.21.0</maven.site.plugin.version>
+        <maven.resources.plugin.version>3.3.1</maven.resources.plugin.version>
+        <maven.jar.plugin.version>3.4.2</maven.jar.plugin.version>
+        <license.maven.plugin.version>4.6</license.maven.plugin.version>
         <exec.maven.plugin.version>3.5.1</exec.maven.plugin.version>
         <lombok.maven.version>1.18.20.0</lombok.maven.version>
 
@@ -106,6 +113,8 @@
         <testcontainer.version>2.0.5</testcontainer.version>
         <dropwizard.version>5.0.2</dropwizard.version>
 
+        <license.year>2025</license.year>
+
         <maven.javadoc.skip>false</maven.javadoc.skip>
         <maven.deploy.skip>false</maven.deploy.skip>
 
@@ -115,12 +124,50 @@
         <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
         <sonar.exclusions>**/exception/*.java</sonar.exclusions>
-        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/magazine-coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${maven.multiModuleProjectDirectory}/magazine-coverage/target/site/jacoco-aggregate/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <build>
         <pluginManagement>
             <plugins>
+                <!--
+                  Pinned because maven-enforcer's requirePluginVersions rule flagged them: without
+                  these, the lifecycle silently binds Maven's defaults (clean 2.5, install 2.4,
+                  deploy 2.7, site 3.3, resources 2.6, jar 2.4), so the build is not reproducible
+                  across Maven versions.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>${maven.clean.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>${maven.install.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>${maven.deploy.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-site-plugin</artifactId>
+                    <version>${maven.site.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>${maven.resources.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven.jar.plugin.version}</version>
+                </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
@@ -219,14 +266,74 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-release-plugin</artifactId>
-                <version>${maven.release.plugin.version}</version>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven.enforcer.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.8.0,)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[17,)</version>
+                                </requireJavaVersion>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.apache.hbase:*</exclude>
+                                        <exclude>log4j:log4j</exclude>
+                                        <exclude>junit:junit</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                                <banDuplicatePomDependencyVersions/>
+                                <requirePluginVersions>
+                                    <banSnapshots>true</banSnapshots>
+                                </requirePluginVersions>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+              Header check runs on every build rather than as a release-time gate, so a file
+              without a header cannot reach main. `mvn license:format` fixes it in place.
+            -->
+            <plugin>
+                <groupId>com.mycila</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>${license.maven.plugin.version}</version>
                 <configuration>
-                    <autoVersionSubmodules>true</autoVersionSubmodules>
-                    <useReleaseProfile>false</useReleaseProfile>
-                    <releaseProfiles>release</releaseProfiles>
-                    <goals>deploy</goals>
+                    <licenseSets>
+                        <licenseSet>
+                            <header>${maven.multiModuleProjectDirectory}/etc/license-header.txt</header>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                        </licenseSet>
+                    </licenseSets>
+                    <properties>
+                        <license.year>${license.year}</license.year>
+                    </properties>
+                    <mapping>
+                        <java>JAVADOC_STYLE</java>
+                    </mapping>
+                    <strictCheck>true</strictCheck>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>check-license-headers</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
@@ -241,7 +348,10 @@
         <profile>
             <id>release</id>
             <activation>
-                <property><name>release</name><value>true</value></property>
+                <property>
+                    <name>release</name>
+                    <value>true</value>
+                </property>
             </activation>
             <build>
                 <plugins>
@@ -253,7 +363,9 @@
                             <execution>
                                 <id>sign-artifacts</id>
                                 <phase>verify</phase>
-                                <goals><goal>sign</goal></goals>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
                                 <configuration>
                                     <gpgArguments>
                                         <arg>--pinentry-mode</arg>

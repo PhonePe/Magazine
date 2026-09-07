@@ -1,45 +1,53 @@
+/**
+ * Copyright (c) 2025 Original Author(s), PhonePe India Pvt. Ltd.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.phonepe.magazine.resources;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.phonepe.magazine.Magazine;
 import com.phonepe.magazine.MagazineManager;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.request.PeekRequest;
-import com.phonepe.magazine.response.MagazineDescriptor;
-import com.phonepe.magazine.response.MagazineMetadataResponse;
-import com.phonepe.magazine.response.PeekResponse;
-import com.phonepe.magazine.response.PeekedData;
-import com.phonepe.magazine.response.ShardMetadata;
+import com.phonepe.magazine.response.*;
 import com.phonepe.magazine.service.MagazineService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.phonepe.magazine.testsupport.GrantRoleFilter;
 import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
 import io.dropwizard.testing.junit5.ResourceExtension;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.lang.reflect.Method;
-import java.util.stream.Collectors;
-import java.util.stream.LongStream;
-import java.util.List;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
+import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import com.phonepe.magazine.testsupport.GrantRoleFilter;
-import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 import org.mockito.Mockito;
+
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(DropwizardExtensionsSupport.class)
 class MagazineResourceTest {
@@ -65,7 +73,8 @@ class MagazineResourceTest {
     void listsOnlyConfiguredMagazines() {
         final List<MagazineDescriptor> response = resources.target("/magazine/v1/magazines")
                 .request()
-                .get(new GenericType<>() { });
+                .get(new GenericType<>() {
+                });
 
         assertEquals(List.of(new MagazineDescriptor("jobs")), response);
         verifyNoDataOperations();
@@ -280,7 +289,7 @@ class MagazineResourceTest {
         final Response response = "DELETE".equals(method)
                 ? resources.target(path).request().method(method)
                 : resources.target(path).request().method(
-                        method, Entity.entity("{}", MediaType.APPLICATION_JSON_TYPE));
+                method, Entity.entity("{}", MediaType.APPLICATION_JSON_TYPE));
         try (response) {
             assertEquals(expected, response.getStatus(), method + " " + path);
         }
