@@ -32,14 +32,18 @@ public class AerospikeStorageConfig {
     private String metaSetName;
     private String dataSetName;
     @Builder.Default
-    private int recordTtl = 30 * 24 * 60 * 60;  // 30 days default ttl
+    private int recordTtl = 30 * 24 * 60 * 60;  // 30 days
     /**
-     * Shard count used when <em>creating</em> a magazine that does not yet exist. For an existing
-     * magazine the persisted count is authoritative and this value is ignored, which is what lets
-     * one storage instance serve magazines with differing shard counts.
+     * Shard count used only when <em>creating</em> a magazine. For an existing magazine the
+     * persisted count is authoritative and this is ignored, which lets one storage instance serve
+     * magazines with differing shard counts.
+     * <p>
+     * Shards spread records across partitions and keep any one metadata record from becoming a hot
+     * key. They no longer dilute fire-pointer contention, so the default is modest: every extra
+     * shard widens the active-shard batch read.
      */
     @Builder.Default
-    private int shards = 64; //Default 64 shards in a magazine
+    private int shards = AerospikeConstants.DEFAULT_SHARDS;
     /**
      * Permit widening an existing magazine's shard count to {@link #shards}. Off by default:
      * shard count is shared, persisted state and must not be mutated as a side effect of boot.
@@ -48,19 +52,30 @@ public class AerospikeStorageConfig {
     @Builder.Default
     private boolean allowShardIncrease = false;
     @Builder.Default
-    private int metaDataTtl = 2 * 30 * 24 * 60 * 60; // 2 months default TTL
+    private int metaDataTtl = 2 * 30 * 24 * 60 * 60; // 2 months
     /**
-     * How many times fire() retries after losing the fire-pointer claim, i.e. after making no
-     * forward progress. Raise it for hot magazines with many concurrent consumers; exhausting it
-     * yields {@code RETRIES_EXHAUSTED}, meaning "gave up under contention", not "queue empty".
+     * Seconds between refreshes of the cached active-shard set, and the primary lever on
+     * steady-state read load: roughly {@code shards / activeShardRefreshSeconds} key reads per
+     * second per magazine under consumption, nothing while idle. Raising it only widens the window
+     * for firing at a drained shard, which is harmless - the claim reports it drained.
      */
     @Builder.Default
-    private int maxFireContentionAttempts = AerospikeConstants.MAX_FIRE_CONTENTION_ATTEMPTS;
+    private int activeShardRefreshSeconds = AerospikeConstants.DEFAULT_REFRESH;
     /**
      * How many consecutive pointer holes fire() skips before giving up. A hole is a slot whose
-     * pointer was allocated but whose data write failed, so skipping one IS forward progress and
-     * does not consume the contention budget. Raise it for magazines with a high write-failure rate.
+     * pointer was allocated but whose data write failed. Exhausting it yields
+     * {@code RETRIES_EXHAUSTED} - "gave up", not "queue empty". There is no companion contention
+     * budget: the claim is a guarded atomic increment and can never be lost.
      */
     @Builder.Default
     private int maxFireHoleSkips = AerospikeConstants.MAX_FIRE_HOLE_SKIPS;
+    /**
+     * Whether to record metrics. Meters go to the {@code meterRegistry} on the storage builder, or
+     * to Micrometer's global registry when none was given - so the common case needs no wiring.
+     * <p>
+     * Setting this false publishes to a private empty registry instead, which means the opt-out
+     * cannot be silently undone by another component attaching a registry globally.
+     */
+    @Builder.Default
+    private boolean metricsEnabled = true;
 }

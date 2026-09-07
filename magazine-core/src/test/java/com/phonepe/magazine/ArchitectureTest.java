@@ -36,17 +36,30 @@ class ArchitectureTest {
             .importPackages("com.phonepe.magazine");
 
     /**
-     * DLM drags in hbase-shaded-client, log4j 1.2.17 and junit 4.12, all of which magazine-core
-     * excludes wholesale. Confining DLM types to the deduplication guard keeps that exclusion safe
-     * and keeps the blast radius of the eventual dlm-aerospike migration to one class.
+     * Deduplication no longer needs a distributed lock - a CREATE_ONLY write is already an atomic
+     * claim - so the DLM dependency was removed outright rather than kept and excluded. This rule
+     * stops it creeping back in: reintroducing it drags hbase-shaded-client, log4j 1.2.17 and
+     * junit 4.12 at compile scope into every consumer's classpath.
      */
     @Test
-    void dlmTypesAreConfinedToTheDeduplicationGuard() {
+    void noDistributedLockManagerDependencyRemains() {
         noClasses()
-                .that().haveNameNotMatching(".*DeDupeGuard.*")
-                .and().resideOutsideOfPackage("com.phonepe.magazine.impl.aerospike.common")
                 .should().dependOnClassesThat().resideInAnyPackage("com.phonepe.dlm..")
-                .because("DLM's transitive graph is excluded wholesale; its types must not leak")
+                .because("DLM was removed in 2.0.0; its transitive graph must not return")
+                .check(CLASSES);
+    }
+
+    /**
+     * Metrics are instrumentation, not domain. Confining Micrometer keeps the meter registry an
+     * implementation detail that callers may decline to supply.
+     */
+    @Test
+    void micrometerTypesStayInsideTheMetricsAndImplementationPackages() {
+        noClasses()
+                .that().resideOutsideOfPackage("com.phonepe.magazine.metrics")
+                .and().resideOutsideOfPackage("com.phonepe.magazine.impl..")
+                .should().dependOnClassesThat().resideInAnyPackage("io.micrometer..")
+                .because("instrumentation must not leak into the API, entities or the SPI")
                 .check(CLASSES);
     }
 

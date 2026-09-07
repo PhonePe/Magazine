@@ -35,7 +35,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 
 - **Java 17** or later
 - **Apache Maven 3.8+**
-- **Docker** (for integration tests using Testcontainers 2)
+- **Docker** (integration tests use Testcontainers to run a real Aerospike server)
 
 ### Build
 
@@ -45,11 +45,53 @@ mvn clean install
 
 ### Run Tests
 
+Always build the **full reactor** and use `verify`, not `test`:
+
 ```bash
-mvn test
+mvn clean verify -Pcoverage
 ```
 
-> **Note:** Integration tests require Docker to be running, as they use Testcontainers to spin up an Aerospike instance.
+Two reasons this matters:
+
+- `mvn test` does **not** run Javadoc. Broken `@link` references only surface under
+  `verify`/`package`, and the build treats them as errors.
+- Building `-pl magazine-dw-bundle` alone resolves a possibly stale `magazine-core` from your local
+  repository, so bundle tests can pass against code you did not just change.
+
+#### Docker discovery
+
+Testcontainers only finds Docker automatically at the default socket. On macOS with Rancher
+Desktop, Colima or Podman you must point it at the right one, or `AerospikeTestContainer` fails to
+start:
+
+```bash
+# Rancher Desktop
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+
+# Colima
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
+
+# Podman
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+```
+
+`export TESTCONTAINERS_RYUK_DISABLED=true` also helps if the Ryuk reaper cannot start in your
+runtime.
+
+The container requires the `NET_ADMIN` capability, which rootless Podman and some hardened Docker
+configurations refuse. The first run also pulls the Aerospike image, so allow a few minutes.
+
+### Architecture tests
+
+`ArchitectureTest` enforces the package layering with ArchUnit — acyclic packages, Aerospike types
+confined to `impl`, no Micrometer outside `metrics` and `impl`, and no DLM dependency returning.
+These fail for non-obvious reasons, so read the rule's `because(...)` clause before working around
+one.
+
+### Coverage
+
+`-Pcoverage` activates JaCoCo. The `magazine-coverage` module aggregates the per-module reports
+into `magazine-coverage/target/site/jacoco-aggregate/`, which is what Sonar reads.
 
 ### Generate Javadoc
 

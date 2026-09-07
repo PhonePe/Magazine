@@ -18,7 +18,7 @@
 
 Replace `${magazine.version}` with the latest version from [Maven Central](https://central.sonatype.com/artifact/com.phonepe/magazine-core) or [GitHub Releases](https://github.com/PhonePe/Magazine/releases).
 
-Magazine 2.0 moves the library artifact from `com.phonepe:magazine` to `com.phonepe:magazine-core`. Source-level Java package names are unchanged.
+Magazine 2.0 moves the artifact from `com.phonepe:magazine` to `com.phonepe:magazine-core` **and restructures several Java packages**. Upgrading from 1.x? See [Upgrading to 2.0](upgrading.md).
 
 ## Build Locally
 
@@ -33,8 +33,11 @@ mvn clean install
 To run the tests (Docker must be running):
 
 ```bash
-mvn clean test
+mvn clean verify
 ```
+
+If Testcontainers cannot find your Docker daemon — common on macOS with Rancher Desktop, Colima or
+Podman — export `DOCKER_HOST` first. See [CONTRIBUTING](https://github.com/PhonePe/Magazine/blob/main/CONTRIBUTING.md).
 
 ## Minimal Example
 
@@ -52,13 +55,13 @@ IAerospikeClient client = new AerospikeClient("localhost", 3000);
 ```java
 import com.phonepe.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorageConfig;
-import com.phonepe.magazine.scope.MagazineScope;
+import com.phonepe.magazine.entity.MagazineScope;
 
 AerospikeStorageConfig config = AerospikeStorageConfig.builder()
         .namespace("test")
         .dataSetName("magazine_data")
         .metaSetName("magazine_meta")
-        .shards(64)
+        .shards(8)
         .recordTtl(30 * 24 * 60 * 60)       // 30 days
         .metaDataTtl(2 * 30 * 24 * 60 * 60)  // 60 days
         .build();

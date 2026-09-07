@@ -40,11 +40,12 @@ final class AerospikeStorageValidator {
         if (storageConfig.getShards() < 1) {
             throw MagazineExceptions.invalidShards("Shard count must be at least 1.");
         }
-        if (storageConfig.getMaxFireContentionAttempts() < 1) {
-            throw MagazineExceptions.invalidConfiguration("Max fire contention attempts must be at least 1.");
-        }
         if (storageConfig.getMaxFireHoleSkips() < 1) {
             throw MagazineExceptions.invalidConfiguration("Max fire hole skips must be at least 1.");
+        }
+        if (storageConfig.getActiveShardRefreshSeconds() < 1) {
+            throw MagazineExceptions.invalidConfiguration(
+                    "Active shard refresh seconds must be at least 1.");
         }
         return storageConfig;
     }

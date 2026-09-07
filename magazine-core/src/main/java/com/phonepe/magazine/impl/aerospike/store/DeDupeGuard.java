@@ -16,28 +16,19 @@
 
 package com.phonepe.magazine.impl.aerospike.store;
 
-import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
-import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryerFactory;
-import static com.phonepe.dlm.exception.ErrorCode.LOCK_UNAVAILABLE;
-
+import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Bin;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Key;
+import com.aerospike.client.ResultCode;
+import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
-import com.github.rholder.retry.RetryException;
-import com.phonepe.dlm.DistributedLockManager;
-import com.phonepe.dlm.lock.base.LockBase;
-import com.phonepe.dlm.lock.mode.LockMode;
-import com.phonepe.dlm.lock.storage.aerospike.AerospikeStore;
 import com.phonepe.magazine.entity.MagazineScope;
+import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
-import com.phonepe.dlm.exception.DLMException;
-import com.phonepe.dlm.lock.Lock;
-import com.phonepe.dlm.lock.level.LockLevel;
-import com.phonepe.magazine.exception.ErrorCode;
-import com.phonepe.magazine.exception.MagazineExceptions;
-import java.util.concurrent.ExecutionException;
-
+import com.phonepe.magazine.impl.aerospike.common.AerospikePolicies;
+import com.phonepe.magazine.metrics.MagazineMetrics;
+import com.phonepe.magazine.metrics.StorageOperation;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,28 +36,33 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Guards a load against duplicate payloads.
  * <p>
- * Modelled as a scope so callers never branch on whether deduplication is enabled - when it is
- * off, {@link #disabled()} hands back a handle whose operations are no-ops. The handle is
- * {@link AutoCloseable} so the distributed lock is always released on the way out.
+ * The claim is a single write under {@link RecordExistsAction#CREATE_ONLY}, and that write
+ * <em>is</em> the mutual exclusion: the server admits exactly one creator of a key and rejects the
+ * rest with {@code KEY_EXISTS_ERROR}. Earlier releases spent four round trips on a distributed
+ * lock to express what the storage engine already guarantees in one.
+ * <p>
+ * The marker is written <em>before</em> the payload, so it must be withdrawn if the load does not
+ * complete; otherwise a failed write suppresses a legitimate retry until the TTL elapses. That is
+ * why callers must use try-with-resources and call {@link Handle#confirm()} on success.
  */
 public interface DeDupeGuard<T> {
 
     /**
-     * Acquire exclusive access for this payload.
+     * Claim exclusive ownership of this payload for the duration of a load.
      *
-     * @throws com.phonepe.magazine.exception.MagazineException with
-     *         {@code ACTION_DENIED_PARALLEL_ATTEMPT} if another writer holds the lock.
+     * @return a handle reporting whether the payload had already been claimed.
      */
-    Handle acquire(String magazineIdentifier, T data);
+    Handle claim(String magazineIdentifier, T data);
 
     interface Handle extends AutoCloseable {
 
         /** @return true if this payload was already loaded and must not be loaded again. */
-        boolean alreadyLoaded() throws ExecutionException, RetryException;
+        boolean duplicate();
 
-        /** Record this payload so a later load of the same value is suppressed. */
-        void remember() throws ExecutionException, RetryException;
+        /** Confirm the payload was durably written, making the suppression permanent. */
+        void confirm();
 
+        /** Withdraws an unconfirmed claim so a retry is not suppressed by a failed load. */
         @Override
         void close();
     }
@@ -75,30 +71,14 @@ public interface DeDupeGuard<T> {
         return (magazineIdentifier, data) -> NoOpHandle.INSTANCE;
     }
 
-    /**
-     * Builds a guard backed by a distributed lock, wiring the lock manager itself so DLM types stay
-     * inside this package.
-     */
     static <T> DeDupeGuard<T> aerospike(final IAerospikeClient client,
-            final AerospikeRetryerFactory retryerFactory,
+            final MagazineMetrics metrics,
             final String namespace,
             final String farmId,
             final String clientId,
             final MagazineScope scope,
             final int recordTtl) {
-        final DistributedLockManager lockManager = new DistributedLockManager(
-                AerospikeConstants.DLM_CLIENT_ID, farmId,
-                LockBase.builder()
-                        .mode(LockMode.EXCLUSIVE)
-                        .lockStore(AerospikeStore.builder()
-                                .aerospikeClient(client)
-                                .namespace(namespace)
-                                .setSuffix(AerospikeConstants.MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX)
-                                .build())
-                        .build());
-        lockManager.initialize();
-        return new Aerospike<>(client, retryerFactory, lockManager,
-                AerospikeNaming.resolveLockLevel(scope), namespace,
+        return new Aerospike<>(client, metrics, namespace,
                 AerospikeNaming.resolveSetName(AerospikeNaming.deDuperSetName(clientId), farmId, scope),
                 recordTtl);
     }
@@ -109,107 +89,132 @@ public interface DeDupeGuard<T> {
         private static final NoOpHandle INSTANCE = new NoOpHandle();
 
         @Override
-        public boolean alreadyLoaded() {
+        public boolean duplicate() {
             return false;
         }
 
         @Override
-        public void remember() {
+        public void confirm() {
             // deduplication disabled - nothing to record
         }
 
         @Override
         public void close() {
-            // no lock was taken
+            // nothing was claimed
         }
     }
 
     /**
-     * Deduplication backed by a distributed lock plus a marker record whose TTL matches the data
-     * record's, so the suppression window and the data lifetime expire together.
+     * Deduplication backed by a marker record whose TTL matches the data record's, so the
+     * suppression window and the data lifetime expire together.
      */
     @Slf4j
     final class Aerospike<T> implements DeDupeGuard<T> {
 
         private final IAerospikeClient client;
-        private final AerospikeRetryerFactory retryerFactory;
-        private final DistributedLockManager lockManager;
-        private final LockLevel lockLevel;
+        private final MagazineMetrics metrics;
         private final String namespace;
         private final String deDuperSetName;
-        private final int recordTtl;
+        private final WritePolicy claimPolicy;
+        private final WritePolicy withdrawPolicy;
 
         private Aerospike(final IAerospikeClient client,
-                final AerospikeRetryerFactory retryerFactory,
-                final DistributedLockManager lockManager,
-                final LockLevel lockLevel,
+                final MagazineMetrics metrics,
                 final String namespace,
                 final String deDuperSetName,
                 final int recordTtl) {
             this.client = client;
-            this.retryerFactory = retryerFactory;
-            this.lockManager = lockManager;
-            this.lockLevel = lockLevel;
+            this.metrics = metrics;
             this.namespace = namespace;
             this.deDuperSetName = deDuperSetName;
-            this.recordTtl = recordTtl;
+
+            this.claimPolicy = AerospikePolicies.writePolicy(client);
+            this.claimPolicy.recordExistsAction = RecordExistsAction.CREATE_ONLY;
+            this.claimPolicy.expiration = recordTtl;
+            this.claimPolicy.sendKey = false;
+            this.withdrawPolicy = AerospikePolicies.writePolicy(client);
         }
 
-
         @Override
-        public Handle acquire(final String magazineIdentifier, final T data) {
-            final Lock lock = lockManager.getLockInstance(
-                    String.join(AerospikeConstants.KEY_DELIMITER, magazineIdentifier, data.toString()), lockLevel);
+        public Handle claim(final String magazineIdentifier, final T data) {
+            final Key key = new Key(namespace, deDuperSetName, magazineIdentifier + data);
+
+            metrics.aerospikeCall(magazineIdentifier, StorageOperation.CLAIM_DEDUPE_MARKER);
             try {
-                lockManager.tryAcquireLock(lock);
-            } catch (DLMException e) {
-                if (LOCK_UNAVAILABLE.equals(e.getErrorCode())) {
-                    throw MagazineExceptions.of(ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT,
-                            String.format("Error acquiring lock - %s", lock.getLockId()), e);
+                // A record needs at least one bin to exist at all, and the claim instant is the
+                // one fact worth carrying: it dates the start of the suppression window.
+                client.put(claimPolicy, key,
+                        new Bin(AerospikeConstants.MODIFIED_AT, System.currentTimeMillis()));
+            } catch (AerospikeException e) {
+                if (e.getResultCode() == ResultCode.KEY_EXISTS_ERROR) {
+                    metrics.dedupeOutcome(magazineIdentifier, MagazineMetrics.DedupeOutcome.DUPLICATE);
+                    return NoOpDuplicateHandle.INSTANCE;
                 }
                 throw e;
             }
-            return new AcquiredHandle(lock, key(magazineIdentifier, data));
+            metrics.dedupeOutcome(magazineIdentifier, MagazineMetrics.DedupeOutcome.CLAIMED);
+            return new ClaimedHandle(magazineIdentifier, key);
         }
 
-        private Key key(final String magazineIdentifier, final T data) {
-            return new Key(namespace, deDuperSetName, magazineIdentifier + data);
-        }
+        @NoArgsConstructor(access = AccessLevel.PRIVATE)
+        private static final class NoOpDuplicateHandle implements Handle {
 
-        private final class AcquiredHandle implements Handle {
+            private static final NoOpDuplicateHandle INSTANCE = new NoOpDuplicateHandle();
 
-            private final Lock lock;
-            private final Key deDuperKey;
-
-            private AcquiredHandle(final Lock lock, final Key deDuperKey) {
-                this.lock = lock;
-                this.deDuperKey = deDuperKey;
+            @Override
+            public boolean duplicate() {
+                return true;
             }
 
             @Override
-            public boolean alreadyLoaded() throws ExecutionException, RetryException {
-                return retryerFactory.call(
-                        () -> client.exists(client.getReadPolicyDefault(), deDuperKey));
-            }
-
-            @Override
-            public void remember() throws ExecutionException, RetryException {
-                retryerFactory.call(() -> {
-                    final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
-                    writePolicy.expiration = recordTtl;
-                    writePolicy.sendKey = false;
-                    client.put(writePolicy, deDuperKey,
-                            new Bin(AerospikeConstants.MODIFIED_AT, System.currentTimeMillis()));
-                    return true;
-                });
+            public void confirm() {
+                // the payload was suppressed, not loaded
             }
 
             @Override
             public void close() {
+                // we did not create the marker, so we must not remove it
+            }
+        }
+
+        private final class ClaimedHandle implements Handle {
+
+            private final String magazineIdentifier;
+            private final Key key;
+            private boolean confirmed;
+
+            private ClaimedHandle(final String magazineIdentifier, final Key key) {
+                this.magazineIdentifier = magazineIdentifier;
+                this.key = key;
+            }
+
+            @Override
+            public boolean duplicate() {
+                return false;
+            }
+
+            @Override
+            public void confirm() {
+                this.confirmed = true;
+            }
+
+            /**
+             * Best effort by design. If the withdrawal itself fails the marker simply lives out
+             * its TTL, suppressing retries of this payload until then - degraded, but never
+             * incorrect, and preferable to failing a load that already succeeded.
+             */
+            @Override
+            public void close() {
+                if (confirmed) {
+                    return;
+                }
                 try {
-                    lockManager.releaseLock(lock);
+                    metrics.aerospikeCall(magazineIdentifier, StorageOperation.WITHDRAW_DEDUPE_MARKER);
+                    client.delete(withdrawPolicy, key);
                 } catch (Exception e) {
-                    log.warn("Error releasing deduplication lock for lock id {}", lock.getLockId(), e);
+                    log.warn("Could not withdraw the deduplication marker for magazine {}; "
+                            + "retries of this payload stay suppressed until it expires.",
+                            magazineIdentifier, e);
                 }
             }
         }

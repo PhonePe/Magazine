@@ -1,6 +1,6 @@
 # Dropwizard Bundle And Dashboard
 
-`magazine-dw-bundle` is the Dropwizard 5 integration for Magazine. It currently registers read-only Magazine APIs and an optional responsive dashboard, and its `MagazineBundle` registration point can be extended with future APIs.
+`magazine-dw-bundle` is the Dropwizard 5 integration for Magazine. It registers read-only Magazine APIs and an optional responsive dashboard.
 
 ## Dependency
 
@@ -13,6 +13,89 @@
 ```
 
 Applications using only `com.phonepe:magazine-core` do not acquire Dropwizard dependencies.
+
+## Dropwizard version compatibility
+
+| Dropwizard | `magazine-core` | `magazine-dw-bundle` |
+|---|---|---|
+| 5.x | ✅ | ✅ |
+| 4.x | ✅ | ⚠️ likely — same `jakarta` namespace, untested |
+| 3.x | ✅ | ⚠️ likely — same `jakarta` namespace, untested |
+| 2.x | ✅ (Java 17+ only) | ❌ **not possible** |
+
+### Why 2.x cannot work
+
+This is not a version skew that a dependency override can bridge. Dropwizard 3 moved the whole
+stack from `javax.*` to `jakarta.*`, and the bundle is compiled against the latter:
+
+| Bundle uses | Dropwizard 2.x has |
+|---|---|
+| `jakarta.ws.rs.*` | `javax.ws.rs.*` |
+| `jakarta.annotation.security.RolesAllowed` | `javax.annotation.security.RolesAllowed` |
+| `io.dropwizard.core.ConfiguredBundle` | `io.dropwizard.ConfiguredBundle` |
+| Jersey 3 `RolesAllowedDynamicFeature` | Jersey 2 equivalent |
+
+Different packages are different classes. `MagazineBundle` would not load, and neither would the
+resource. Byte-code relocation of `javax` → `jakarta` is theoretically possible and not something
+to run in production.
+
+### What a Dropwizard 2.x service can do
+
+**Use `magazine-core` directly.** It has no framework dependency at all — its compile graph is
+`aerospike-client`, `caffeine`, `slf4j` and `micrometer-core` — so the queue itself works
+unchanged. Only the ~200-line read-only HTTP layer is unavailable.
+
+!!! warning "Java 17 required"
+    `magazine-core` targets Java 17. Dropwizard 2.1.x supports Java 11, so a service still on 11
+    cannot use Magazine 2.0 at all and must stay on 1.x until it upgrades.
+
+Rebuilding the endpoints is small. `MagazineManager` and `Magazine` are plain objects:
+
+```java
+import javax.ws.rs.*;
+import javax.ws.rs.core.MediaType;
+
+@Path("/magazines")
+@Produces(MediaType.APPLICATION_JSON)
+public class MagazineAdminResource {
+
+    private final MagazineManager magazineManager;
+
+    public MagazineAdminResource(MagazineManager magazineManager) {
+        this.magazineManager = magazineManager;
+    }
+
+    @GET
+    public Set<String> magazines() {
+        return magazineManager.getMagazineMap().keySet();
+    }
+
+    @GET
+    @Path("/{identifier}/metadata")
+    public Map<String, MetaData> metadata(@PathParam("identifier") String identifier) {
+        return magazineManager.getMagazine(identifier).getMetaData();
+    }
+
+    @POST
+    @Path("/{identifier}/peek")
+    @RolesAllowed("magazine_peek")
+    public Set<? extends MagazineData<?>> peek(@PathParam("identifier") String identifier,
+                                               Map<Integer, Set<Long>> pointers) {
+        return magazineManager.getMagazine(identifier).peek(pointers);
+    }
+}
+```
+
+Two things the bundle does that you should copy:
+
+- **Bound the peek.** The bundle caps a request at 1000 pointers. An unbounded peek is a way to ask
+  the cluster for everything at once.
+- **Fail closed on peek.** Peek reads payloads. Register `RolesAllowedDynamicFeature` and make sure
+  whatever populates the `SecurityContext` is annotated `@Priority(Priorities.AUTHENTICATION)`, or
+  the role check runs first and denies everything.
+
+Caching the metadata response for a few seconds is also worth copying — see `metadataCacheSeconds`
+below for why.
 
 ## Configuration
 
@@ -30,9 +113,21 @@ public final class ServiceConfiguration extends Configuration {
 ```yaml
 magazineBundle:
   dashboardEnabled: true
+  metadataCacheSeconds: 5
+  metricsEnabled: true
 ```
 
 Registering `MagazineBundle` always enables the Magazine APIs. `dashboardEnabled` controls only the static dashboard and defaults to `true`.
+
+| Field | Default | Description |
+|---|---:|---|
+| `dashboardEnabled` | `true` | Serve the static dashboard assets. |
+| `metadataCacheSeconds` | `5` | Seconds to cache a magazine's shard metadata for; `0` disables caching. |
+| `metricsEnabled` | `true` | Publish Magazine's metrics through the application's metric registry, so they appear on the admin port. |
+
+`metricsEnabled` bridges Magazine's meters to `environment.metrics()` and attaches that bridge to Micrometer's global registry. Storages need no wiring — build them without a `meterRegistry` and their metrics land on the admin port alongside the rest of the service's. Override `createMeterRegistry(...)` to publish elsewhere. See [Metrics](concepts/metrics.md).
+
+`metadataCacheSeconds` throttles the per-shard fan-out behind `/metadata`. Rendering the dashboard costs one batch read per magazine that fans out to every shard, so an open dashboard — or anything polling `/metadata` on a timer — issues `magazines x shards` key reads per refresh against the same cluster serving production traffic. Caching collapses that to at most one fan-out per magazine per window. An unknown magazine is resolved before the cache is consulted, so it still returns `404` rather than being cached as a miss.
 
 ## Registration
 
@@ -67,9 +162,16 @@ public void run(ServiceConfiguration configuration, Environment environment) {
 }
 ```
 
-The bundle creates and exposes its `MagazineManager`, following the Ignis bundle pattern. `MagazineManager.refresh(...)` atomically replaces the registered map, and API/dashboard requests see the new magazine set immediately without a restart. Identifiers may contain letters, digits, `.`, `_`, or `-`.
+The bundle creates and exposes its `MagazineManager`, following the Ignis bundle pattern. `MagazineManager.refresh(...)` atomically replaces the registered map, and API/dashboard requests see the new magazine set immediately without a restart.
 
-For future APIs, extend `registerResources(...)`, call `super.registerResources(...)`, and register additional resources. This keeps registration centralized in the bundle instead of dashboard-specific code.
+`MagazineBundle` declares exactly two abstract methods, both shown above:
+
+| Method | Purpose |
+|---|---|
+| `getMagazineBundleConfiguration(T configuration)` | Return the bundle's `MagazineBundleConfiguration`. Must not be null. |
+| `getClientId(T configuration)` | Return the owning client identifier used to build the `MagazineManager`. Must not be null. |
+
+There is no resource-registration extension point; the bundle registers `MagazineResource` and `RolesAllowedDynamicFeature` itself. Register any additional resources of your own directly on `environment.jersey()`.
 
 ## Dashboard
 
@@ -86,7 +188,7 @@ Metadata refreshes automatically every 30 seconds for the selected magazine. The
 
 ### Screenshot
 
-Add the dashboard screenshot at `docs/docs/assets/magazine-dashboard.png`. After adding it, insert `![Magazine dashboard](assets/magazine-dashboard.png)` here.
+_Screenshot pending._
 
 ## Routes
 
@@ -96,19 +198,74 @@ Add the dashboard screenshot at `docs/docs/assets/magazine-dashboard.png`. After
 | `GET` | `/magazineDashboard/style.css` | Static stylesheet |
 | `GET` | `/magazine/v1/magazines` | Configured magazines |
 | `GET` | `/magazine/v1/magazines/{identifier}/metadata` | Per-shard and total metadata |
-| `POST` | `/magazine/v1/magazines/{identifier}/peek` | Non-consuming record read |
+| `POST` | `/magazine/v1/magazines/{identifier}/peek` | 🔒 Non-consuming record read — requires role `magazine_peek` |
+
+### Metadata response
+
+```json
+{
+  "identifier": "email-jobs",
+  "shards": {
+    "SHARD_0": {
+      "loadCounter": 36,
+      "fireCounter": 34,
+      "loadPointer": 36,
+      "firePointer": 34,
+      "pending": 2
+    },
+    "SHARD_1": {
+      "loadCounter": 31,
+      "fireCounter": 30,
+      "loadPointer": 31,
+      "firePointer": 30,
+      "pending": 1
+    }
+  },
+  "totals": {
+    "loadCounter": 67,
+    "fireCounter": 64,
+    "loadPointer": 0,
+    "firePointer": 0,
+    "pending": 3
+  }
+}
+```
+
+`loadPointer` and `firePointer` are deliberately reported as `0` in `totals` — see the note above.
 
 The API still accepts batched programmatic peek requests:
 
 ```json
 {
   "pointers": {
-    "0": ["1", "2"]
+    "0": [1, 2]
   }
 }
 ```
 
-Counters and pointers are returned as JSON numbers. Each peeked record also carries a `type` field with the payload's simple class name; a payload that cannot be serialised degrades to its `toString()` rather than failing the request.
+### Peek response
+
+```json
+{
+  "identifier": "email-jobs",
+  "data": [
+    {
+      "shard": 0,
+      "pointer": 1,
+      "type": "String",
+      "data": "user:1001:welcome"
+    },
+    {
+      "shard": 0,
+      "pointer": 2,
+      "type": "String",
+      "data": "user:1002:shipped"
+    }
+  ]
+}
+```
+
+`shard` is `null` for an unsharded magazine. Counters and pointers are returned as JSON numbers, never strings. Each peeked record also carries a `type` field with the payload's simple class name; a payload that cannot be serialised degrades to its `toString()` rather than failing the request.
 
 Programmatic peek requests are limited to 1,000 pointers per request. This fixed guard is not configurable.
 

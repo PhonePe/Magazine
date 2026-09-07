@@ -97,12 +97,10 @@
 
         <lombok.version>1.18.46</lombok.version>
         <mockito.version>4.3.1</mockito.version>
-        <guava.retrying.version>2.0.0</guava.retrying.version>
-        <guava.version>33.7.1-jre</guava.version>
         <slf4j.version>2.0.18</slf4j.version>
         <junit.jupiter.version>5.14.4</junit.jupiter.version>
-        <DLM.version>1.0.2</DLM.version>
         <caffeine.version>3.2.4</caffeine.version>
+        <micrometer.version>1.14.4</micrometer.version>
         <aerospike.version>6.3.1</aerospike.version>
         <archunit.version>1.4.1</archunit.version>
         <testcontainer.version>2.0.5</testcontainer.version>
@@ -119,16 +117,6 @@
         <sonar.exclusions>**/exception/*.java</sonar.exclusions>
         <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/magazine-coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-                <version>${guava.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <build>
         <pluginManagement>

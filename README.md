@@ -26,8 +26,11 @@ flowchart TD
 | Feature | Description |
 |---|---|
 | **Load / Fire / Reload** | Queue-like semantics with pointer-based reads |
-| **Sharding** | Configurable shard count for horizontal throughput |
-| **De-duplication** | Optional distributed lock-based de-dup on write |
+| **At-most-once delivery** | A record is claimed by exactly one consumer — [and can be lost on timeout](docs/docs/concepts/delivery-semantics.md) |
+| **Lock-free dequeue** | A guarded atomic increment claims the fire pointer, so round trips per dequeue do not scale with consumer count |
+| **Sharding** | Per-magazine shard count, persisted and authoritative |
+| **De-duplication** | Optional, via a single create-only write — no distributed lock |
+| **Metrics** | Optional [Micrometer instrumentation](docs/docs/concepts/metrics.md), including round-trip counts |
 | **Storage abstraction** | Aerospike implementation with an extensible storage contract |
 | **Magazine Manager** | Orchestrate multiple heterogeneous magazines |
 | **Dropwizard dashboard** | Optional read-only metadata and bounded peek UI |
@@ -40,7 +43,7 @@ flowchart TD
 | `magazine-core` | `com.phonepe:magazine-core` | Magazine API and Aerospike storage implementation |
 | `magazine-dw-bundle` | `com.phonepe:magazine-dw-bundle` | Extensible Dropwizard 5 integration, read APIs, and dashboard |
 
-Magazine 2.0 intentionally moves the library JAR from `com.phonepe:magazine` to `com.phonepe:magazine-core`. Java packages remain unchanged. This coordinate change is the expected breaking change for the major release.
+Magazine 2.0 is a **breaking release**: the library JAR moves from `com.phonepe:magazine` to `com.phonepe:magazine-core`, and several Java packages were restructured. See [Upgrading to 2.0](docs/docs/upgrading.md) for the full list.
 
 ## Quick Start
 
@@ -68,7 +71,7 @@ implementation 'com.phonepe:magazine-core:2.0.0'
 import com.aerospike.client.AerospikeClient;
 import com.phonepe.magazine.*;
 import com.phonepe.magazine.impl.aerospike.*;
-import com.phonepe.magazine.scope.MagazineScope;
+import com.phonepe.magazine.entity.MagazineScope;
 
 // Connect to Aerospike
 IAerospikeClient client = new AerospikeClient("localhost", 3000);
@@ -78,7 +81,7 @@ AerospikeStorageConfig config = AerospikeStorageConfig.builder()
         .namespace("test")
         .dataSetName("magazine_data")
         .metaSetName("magazine_meta")
-        .shards(64)
+        .shards(8)
         .recordTtl(30 * 24 * 60 * 60)      // 30 days
         .metaDataTtl(2 * 30 * 24 * 60 * 60) // 60 days
         .build();

@@ -17,6 +17,7 @@
 package com.phonepe.magazine;
 
 import com.phonepe.magazine.config.MagazineBundleConfiguration;
+import com.phonepe.magazine.metrics.DropwizardMagazineMetrics;
 import com.phonepe.magazine.resources.MagazineResource;
 import com.phonepe.magazine.service.MagazineService;
 import io.dropwizard.assets.AssetsBundle;
@@ -24,6 +25,10 @@ import io.dropwizard.core.ConfiguredBundle;
 import io.dropwizard.core.Configuration;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import io.dropwizard.lifecycle.Managed;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.util.Objects;
 import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 import lombok.AccessLevel;
@@ -37,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 public abstract class MagazineBundle<T extends Configuration> implements ConfiguredBundle<T> {
 
     private MagazineManager magazineManager;
+    private MeterRegistry meterRegistry;
 
     @Override
     public void initialize(final Bootstrap<?> bootstrap) {
@@ -49,7 +55,9 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
                 getMagazineBundleConfiguration(configuration), "magazineBundle configuration");
         this.magazineManager = new MagazineManager(
                 Objects.requireNonNull(getClientId(configuration), "clientId"));
-        final MagazineService service = new MagazineService(magazineManager, environment.getObjectMapper());
+        this.meterRegistry = resolveMeterRegistry(configuration, environment, bundleConfiguration);
+        final MagazineService service = new MagazineService(magazineManager,
+                environment.getObjectMapper(), bundleConfiguration.getMetadataCacheSeconds());
 
         environment.jersey().register(RolesAllowedDynamicFeature.class);
         environment.jersey().register(new MagazineResource(service));
@@ -66,6 +74,45 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
         }
     }
 
+    /**
+     * Override to publish somewhere other than the admin port - a Prometheus or OTLP registry, for
+     * instance. Whatever this returns is attached to Micrometer's global registry, so every
+     * {@code AerospikeStorage} picks it up without being handed anything.
+     */
+    protected MeterRegistry createMeterRegistry(final T configuration, final Environment environment) {
+        return DropwizardMagazineMetrics.bridgedTo(environment);
+    }
+
+    /**
+     * Attaching to {@link Metrics#globalRegistry} is what lets an application build storages
+     * without threading a registry through each one. The attach is undone on shutdown so a second
+     * bundle in the same JVM - a test suite, typically - does not inherit the first one's backend.
+     * <p>
+     * {@code metricsEnabled: false} attaches nothing and hands back a private empty composite, so
+     * opting out cannot be undone by someone else attaching a registry globally.
+     */
+    private MeterRegistry resolveMeterRegistry(final T configuration,
+            final Environment environment,
+            final MagazineBundleConfiguration bundleConfiguration) {
+        if (!bundleConfiguration.isMetricsEnabled()) {
+            return new CompositeMeterRegistry();
+        }
+        final MeterRegistry registry = Objects.requireNonNull(
+                createMeterRegistry(configuration, environment), "meterRegistry");
+        Metrics.addRegistry(registry);
+        environment.lifecycle().manage(new Managed() {
+            @Override
+            public void start() {
+                // Already attached; attaching here would be too late for storages built in run().
+            }
+
+            @Override
+            public void stop() {
+                Metrics.removeRegistry(registry);
+            }
+        });
+        return registry;
+    }
 
     protected abstract MagazineBundleConfiguration getMagazineBundleConfiguration(T configuration);
 

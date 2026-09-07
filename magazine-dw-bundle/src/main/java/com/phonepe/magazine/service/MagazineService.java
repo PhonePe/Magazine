@@ -17,6 +17,8 @@
 package com.phonepe.magazine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.phonepe.magazine.Magazine;
 import com.phonepe.magazine.MagazineManager;
 import com.phonepe.magazine.entity.MagazineData;
@@ -29,6 +31,7 @@ import com.phonepe.magazine.response.PeekedData;
 import com.phonepe.magazine.response.ShardMetadata;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -43,10 +46,26 @@ public final class MagazineService {
 
     private final MagazineManager magazineManager;
     private final ObjectMapper objectMapper;
+    /**
+     * Null when caching is disabled. Metadata is a fan-out read over every shard, so an unthrottled
+     * dashboard is a steady load source against the production cluster.
+     */
+    private final LoadingCache<String, MagazineMetadataResponse> metadataCache;
 
     public MagazineService(final MagazineManager magazineManager, final ObjectMapper objectMapper) {
+        this(magazineManager, objectMapper, 0);
+    }
+
+    public MagazineService(final MagazineManager magazineManager,
+            final ObjectMapper objectMapper,
+            final int metadataCacheSeconds) {
         this.magazineManager = magazineManager;
         this.objectMapper = objectMapper;
+        this.metadataCache = metadataCacheSeconds > 0
+                ? Caffeine.newBuilder()
+                        .expireAfterWrite(Duration.ofSeconds(metadataCacheSeconds))
+                        .build(this::readMetadata)
+                : null;
     }
 
     public List<MagazineDescriptor> descriptors() {
@@ -57,6 +76,15 @@ public final class MagazineService {
     }
 
     public MagazineMetadataResponse metadata(final String identifier) {
+        if (Objects.isNull(metadataCache)) {
+            return readMetadata(identifier);
+        }
+        // Resolve first so an unknown magazine still 404s rather than being cached as a miss.
+        magazine(identifier);
+        return metadataCache.get(identifier);
+    }
+
+    private MagazineMetadataResponse readMetadata(final String identifier) {
         final Map<String, ShardMetadata> shards = new LinkedHashMap<>();
         magazine(identifier).getMetaData().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(MagazineService::compareShardIds))

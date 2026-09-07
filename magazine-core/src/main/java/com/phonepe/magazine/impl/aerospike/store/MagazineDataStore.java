@@ -23,75 +23,99 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.ResultCode;
 import com.aerospike.client.policy.WritePolicy;
-import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
-import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryerFactory;
+import com.phonepe.magazine.impl.aerospike.common.AerospikePolicies;
+import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
+import com.phonepe.magazine.metrics.MagazineMetrics;
+import com.phonepe.magazine.metrics.StorageOperation;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Reads and writes the payload records themselves, keyed by {@code <magazine>[_SHARD_<n>]_<pointer>}.
+ * <p>
+ * Records carry only the payload; the {@code modified_at} bin these used to write was never read
+ * back, so it was pure width on the hottest write path. Data keys embed the pointer, so unlike
+ * metadata keys they cannot be precomputed.
  */
-@RequiredArgsConstructor(access = lombok.AccessLevel.PUBLIC)
 public final class MagazineDataStore<T> {
 
     private final IAerospikeClient client;
-    private final AerospikeRetryerFactory retryerFactory;
+    private final AerospikeRetryer retryerFactory;
+    private final MagazineMetrics metrics;
     private final String namespace;
     private final String dataSetName;
-    private final int recordTtl;
     private final Class<T> clazz;
+    private final WritePolicy writePolicy;
+    private final WritePolicy deletePolicy;
+
+    public MagazineDataStore(final IAerospikeClient client,
+            final AerospikeRetryer retryerFactory,
+            final MagazineMetrics metrics,
+            final String namespace,
+            final String dataSetName,
+            final int recordTtl,
+            final Class<T> clazz) {
+        this.client = client;
+        this.retryerFactory = retryerFactory;
+        this.metrics = metrics;
+        this.namespace = namespace;
+        this.dataSetName = dataSetName;
+        this.clazz = clazz;
+
+        this.writePolicy = AerospikePolicies.writePolicy(client);
+        this.writePolicy.expiration = recordTtl;
+        this.writePolicy.sendKey = true;
+        this.deletePolicy = AerospikePolicies.writePolicy(client);
+    }
 
     public boolean write(final MagazineContext context,
             final Integer shard,
             final long pointer,
-            final T data) throws ExecutionException, RetryException {
+            final T data) {
         final Key key = dataKey(context, shard, pointer);
         return retryerFactory.call(() -> {
-            final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
-            writePolicy.expiration = recordTtl;
-            writePolicy.sendKey = true;
-            client.put(writePolicy, key,
-                    new Bin(AerospikeConstants.DATA, data),
-                    new Bin(AerospikeConstants.MODIFIED_AT, System.currentTimeMillis()));
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.WRITE_DATA);
+            client.put(writePolicy, key, new Bin(AerospikeConstants.DATA, data));
             return true;
         });
     }
 
     /** @return the record at that pointer, or null when the slot is a hole. */
-    public Record read(final MagazineContext context, final Integer shard, final long pointer)
-            throws ExecutionException, RetryException {
+    public Record read(final MagazineContext context, final Integer shard, final long pointer) {
         final Key key = dataKey(context, shard, pointer);
-        return retryerFactory.call(() -> client.get(client.getReadPolicyDefault(), key));
+        return retryerFactory.call(() -> {
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.READ_DATA);
+            return client.get(client.getReadPolicyDefault(), key, AerospikeConstants.DATA_BINS);
+        });
     }
 
-    public void delete(final MagazineContext context, final MagazineData<T> magazineData)
-            throws ExecutionException, RetryException {
+    public void delete(final MagazineContext context, final MagazineData<T> magazineData) {
         final Key key = dataKey(context, magazineData.getShard(), magazineData.getFirePointer());
         retryerFactory.call(() -> {
-            client.delete(new WritePolicy(client.getWritePolicyDefault()), key);
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.DELETE_DATA);
+            client.delete(deletePolicy, key);
             return true;
         });
     }
 
     public Set<MagazineData<T>> peek(final MagazineContext context,
-            final Map<Integer, Set<Long>> shardPointersMap) throws ExecutionException, RetryException {
+            final Map<Integer, Set<Long>> shardPointersMap) {
         final List<PeekRequest> requests = new ArrayList<>();
         final List<BatchRead> batchReads = new ArrayList<>();
         for (Map.Entry<Integer, Set<Long>> entry : shardPointersMap.entrySet()) {
             for (long pointer : entry.getValue()) {
-                batchReads.add(new BatchRead(dataKey(context, entry.getKey(), pointer), true));
+                batchReads.add(new BatchRead(dataKey(context, entry.getKey(), pointer),
+                        AerospikeConstants.DATA_BINS));
                 requests.add(new PeekRequest(entry.getKey(), pointer));
             }
         }
@@ -99,7 +123,10 @@ public final class MagazineDataStore<T> {
             return Set.of();
         }
 
-        retryerFactory.call(() -> client.get(client.getBatchPolicyDefault(), batchReads));
+        retryerFactory.call(() -> {
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.BATCH_READ_DATA);
+            return client.get(client.getBatchPolicyDefault(), batchReads);
+        });
 
         final Set<MagazineData<T>> peeked = new HashSet<>(capacityFor(requests.size()));
         for (int i = 0; i < requests.size(); i++) {

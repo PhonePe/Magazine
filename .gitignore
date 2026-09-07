@@ -34,3 +34,6 @@ replay_pid*
 
 # Zensical docs build output
 docs/site/
+
+# Generated documentation site
+docs/site/

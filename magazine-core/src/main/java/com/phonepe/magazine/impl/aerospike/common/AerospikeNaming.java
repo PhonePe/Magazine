@@ -17,7 +17,6 @@
 package com.phonepe.magazine.impl.aerospike.common;
 
 import com.aerospike.client.Key;
-import com.phonepe.dlm.lock.level.LockLevel;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineScope;
 import java.util.Objects;
@@ -101,20 +100,6 @@ public final class AerospikeNaming {
             @Override
             public String visitGlobal() {
                 return setName;
-            }
-        });
-    }
-
-    public static LockLevel resolveLockLevel(final MagazineScope scope) {
-        return scope.accept(new MagazineScope.Visitor<>() {
-            @Override
-            public LockLevel visitLocal() {
-                return LockLevel.DC;
-            }
-
-            @Override
-            public LockLevel visitGlobal() {
-                return LockLevel.XDC;
             }
         });
     }

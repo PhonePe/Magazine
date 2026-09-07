@@ -27,11 +27,6 @@
             <version>${aerospike.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.github.rholder</groupId>
-            <artifactId>guava-retrying</artifactId>
-            <version>${guava.retrying.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>${caffeine.version}</version>
@@ -41,28 +36,19 @@
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
+        <!--
+          Deduplication used to serialise writers with a DLM distributed lock, which forced this
+          module to depend on the DLM artifact and to exclude its entire transitive graph
+          (hbase-shaded-client ~40MB, log4j 1.2.17 with three RCE CVEs, junit 4.12 at compile
+          scope and a Jackson 2.9.6 downgrade). The lock is gone: a single write under
+          RecordExistsAction.CREATE_ONLY is already an atomic claim, so DeDupeGuard needs no
+          coordination primitive and the dependency has been removed outright rather than
+          excluded. See ArchitectureTest#noDistributedLockManagerDependencyRemains.
+        -->
         <dependency>
-            <groupId>com.phonepe</groupId>
-            <artifactId>DLM</artifactId>
-            <version>${DLM.version}</version>
-            <!--
-              DLM 1.0.2 ships both AerospikeStore and HBaseStore in one artifact. Magazine only
-              ever constructs AerospikeStore, and jdeps confirms the Aerospike path needs exactly
-              three external packages - com.aerospike.client(.policy), com.github.rholder.retry
-              and org.slf4j - all of which magazine-core already declares directly, at equal or
-              newer versions. Everything else DLM pulls is HBaseStore-only or test-only, and is
-              actively harmful to publish: hbase-shaded-client 2.0.1 (~40MB) drags in
-              log4j 1.2.17 (CVE-2019-17571, CVE-2022-23305, CVE-2021-4104) and junit 4.12 at
-              compile scope, plus jackson 2.9.6 which would silently downgrade Jackson for any
-              Dropwizard consumer.
-
-              So the blanket exclusion is deliberate and load-bearing, not sloppiness. Do not
-              remove it without re-running the jdeps check. It can be dropped wholesale once we
-              move to the dlm-aerospike artifact, which has no HBase surface.
-            -->
-            <exclusions>
-                <exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion>
-            </exclusions>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>${micrometer.version}</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

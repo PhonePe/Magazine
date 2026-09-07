@@ -16,7 +16,7 @@
 
 package com.phonepe.magazine.impl.aerospike.store;
 
-import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.exception.MagazineExceptions;
@@ -24,7 +24,6 @@ import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -32,20 +31,27 @@ import java.util.function.Function;
 /**
  * Caches which shards currently hold data and picks one at random to fire from.
  * <p>
- * The cache is refreshed periodically rather than on every fire, so it is deliberately allowed to
- * be stale: {@link #suppress} prunes a shard the caller has just observed to be drained, which
- * converges without waiting for the next refresh. Once every shard is pruned the next call raises
- * {@code NOTHING_TO_FIRE}, which is how an exhausted magazine terminates the fire loop.
+ * The cache is deliberately allowed to be stale: {@link #suppress} prunes a shard the caller has
+ * just observed to be drained, which converges without waiting for the next refresh. Once every
+ * shard is pruned the next call raises {@code NOTHING_TO_FIRE}, which is how an exhausted magazine
+ * terminates the fire loop.
+ * <p>
+ * Each refresh is a batch read fanning out to every shard, so the discovery floor is
+ * {@code magazines x shards / refreshSeconds} key reads per second. {@code refreshAfterWrite} only
+ * refreshes on access, so idle magazines cost nothing. Refresh traffic is attributable through the
+ * {@code refresh_active_shards} operation tag on {@code magazine.aerospike.calls}; this class holds
+ * no metrics of its own.
  */
 public final class ActiveShardSelector {
 
-    private final AsyncLoadingCache<MagazineContext, int[]> cache;
+    private final LoadingCache<MagazineContext, int[]> cache;
 
-    public ActiveShardSelector(final Function<MagazineContext, int[]> loader) {
+    public ActiveShardSelector(final Function<MagazineContext, int[]> loader,
+            final int refreshSeconds) {
         this.cache = Caffeine.newBuilder()
                 .maximumSize(AerospikeConstants.DEFAULT_MAX_ELEMENTS)
-                .refreshAfterWrite(AerospikeConstants.DEFAULT_REFRESH, TimeUnit.SECONDS)
-                .buildAsync(loader::apply);
+                .refreshAfterWrite(refreshSeconds, TimeUnit.SECONDS)
+                .build(loader::apply);
     }
 
     /**
@@ -53,9 +59,8 @@ public final class ActiveShardSelector {
      * @throws com.phonepe.magazine.exception.MagazineException with {@code NOTHING_TO_FIRE} when
      *         no shard has data.
      */
-    public Integer randomShardForFire(final MagazineContext context)
-            throws InterruptedException, ExecutionException {
-        final int[] activeShards = cache.get(context).get();
+    public Integer randomShardForFire(final MagazineContext context) {
+        final int[] activeShards = cache.get(context);
         if (activeShards.length == 0) {
             throw MagazineExceptions.nothingToFire(
                     String.format(ErrorMessage.NO_DATA_TO_FIRE, context.getMagazineIdentifier()));
@@ -68,7 +73,7 @@ public final class ActiveShardSelector {
     /** Prune a shard the caller has just observed to be drained. No-op if not currently cached. */
     public void suppress(final MagazineContext context, final Integer shard) {
         final int target = Objects.isNull(shard) ? 0 : shard;
-        cache.synchronous().asMap().computeIfPresent(context, (key, activeShards) -> {
+        cache.asMap().computeIfPresent(context, (key, activeShards) -> {
             final int[] remaining = new int[activeShards.length];
             int kept = 0;
             for (int activeShard : activeShards) {

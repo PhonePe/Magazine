@@ -41,6 +41,16 @@ public final class AerospikeConstants {
     public static final String CREATED_AT = "CREATED_AT";
     public static final String SHARDS_BIN = "SHARDS";
 
+    /**
+     * Bins to project on metadata batch reads. Metadata records are read {@code shards}-wide on
+     * every active-shard refresh, so projecting keeps that fan-out from carrying bins nobody reads.
+     */
+    public static final String[] METADATA_BINS = {
+            LOAD_POINTER, FIRE_POINTER, LOAD_COUNTER, FIRE_COUNTER};
+
+    /** Bins to project on data reads - the payload is the only bin any caller consumes. */
+    public static final String[] DATA_BINS = {DATA};
+
     // --- key suffixes -----------------------------------------------------------------------
     public static final String KEY_DELIMITER = "_";
     /** Unified schema: pointers and counters share one record. */
@@ -54,8 +64,6 @@ public final class AerospikeConstants {
     public static final int UNIFIED_METADATA_SCHEMA_VERSION = 2;
 
     // --- deduplication ----------------------------------------------------------------------
-    public static final String MAGAZINE_DISTRIBUTED_LOCK_SET_NAME_SUFFIX = "magazine_distributed_lock";
-    public static final String DLM_CLIENT_ID = "magazine";
     /**
      * Deduplication keys its marker record on the payload's toString(), which is only stable and
      * collision-free for these value types.
@@ -65,16 +73,33 @@ public final class AerospikeConstants {
     // --- retry / backoff --------------------------------------------------------------------
     public static final int MAX_RETRIES = 5;
     public static final long AEROSPIKE_RETRY_DELAY_MS = 10;
-    /** Bounds fire() retries that made no forward progress (the pointer claim was lost). */
-    public static final int MAX_FIRE_CONTENTION_ATTEMPTS = 16;
-    /** Bounds consecutive pointer holes skipped by fire(); each skip IS forward progress. */
+    /**
+     * Bounds consecutive pointer holes skipped by fire(); each skip IS forward progress.
+     * <p>
+     * There is deliberately no companion contention budget. The fire pointer is claimed by a
+     * single guarded atomic increment, so distinct callers always receive distinct pointers and
+     * a claim can never be lost to a competing consumer.
+     */
     public static final int MAX_FIRE_HOLE_SKIPS = 512;
-    public static final long FIRE_BACKOFF_BASE_MS = 2;
-    public static final long FIRE_BACKOFF_MAX_MS = 50;
 
     // --- active shard cache -----------------------------------------------------------------
+    /**
+     * Seconds between active-shard cache refreshes. Each refresh is a batch read fanning out to
+     * every shard of the magazine, so the steady-state discovery cost is
+     * {@code magazines x shards / refresh} key reads per second.
+     */
     public static final int DEFAULT_REFRESH = 5;
     public static final int DEFAULT_MAX_ELEMENTS = 1024;
+
+    /**
+     * Shard count applied when creating a magazine that does not yet exist.
+     * <p>
+     * Shards exist to spread load across Aerospike partitions and to keep any single metadata
+     * record from becoming a hot key. They no longer serve to dilute fire-pointer contention -
+     * the guarded atomic claim removed that - so this default was reduced from 64, which made
+     * active-shard discovery eight times more expensive than the hot-key protection required.
+     */
+    public static final int DEFAULT_SHARDS = 8;
 
     public static final int SHARD_CONFIGURATION_TTL_SECONDS = 5 * 365 * 24 * 60 * 60;
 }

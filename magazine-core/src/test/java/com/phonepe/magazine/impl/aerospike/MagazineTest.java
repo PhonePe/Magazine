@@ -31,7 +31,6 @@ import com.aerospike.client.Host;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.policy.ClientPolicy;
-import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.Magazine;
@@ -41,14 +40,20 @@ import com.phonepe.magazine.core.BaseMagazineStorage;
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.entity.MagazineScope;
+import com.phonepe.magazine.impl.aerospike.store.DeDupeGuard;
+import com.phonepe.magazine.metrics.MagazineMetrics;
 import com.phonepe.magazine.server.AerospikeTestContainer;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -164,7 +169,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void emptyMagazineReturnsNothingToFire() throws ExecutionException, RetryException {
+    public void emptyMagazineReturnsNothingToFire() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("EMPTY_CACHE_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -174,7 +179,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void freshMagazineStoresCountersAndPointersTogether() throws ExecutionException, RetryException {
+    public void freshMagazineStoresCountersAndPointersTogether() {
         Magazine<String> magazine = buildUnshardedMagazine(
                 "UNIFIED_METADATA_MAGAZINE", "UNIFIED_METADATA_DATA", "UNIFIED_METADATA_META");
 
@@ -197,7 +202,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void activeShardDiscoveryRequiresPublishedCounter() throws ExecutionException, RetryException {
+    public void activeShardDiscoveryRequiresPublishedCounter() {
         Magazine<String> magazine = buildUnshardedMagazine(
                 "COUNTER_DRIFT_MAGAZINE", "COUNTER_DRIFT_DATA", "COUNTER_DRIFT_META");
 
@@ -216,7 +221,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void versionlessMagazineContinuesUsingLegacyMetadata() throws ExecutionException, RetryException {
+    public void versionlessMagazineContinuesUsingLegacyMetadata() {
         String magazineIdentifier = "LEGACY_METADATA_MAGAZINE";
         String metaSet = "FARM_ID_LEGACY_METADATA_META";
         aerospikeClient.put(
@@ -256,7 +261,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void storageCanServeLegacyAndUnifiedMagazines() throws ExecutionException, RetryException {
+    public void storageCanServeLegacyAndUnifiedMagazines() {
         AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
         String legacyIdentifier = "SHARED_STORAGE_LEGACY";
         aerospikeClient.put(
@@ -279,7 +284,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void persistedShardCountIsAdoptedWithoutOptIn() throws ExecutionException, RetryException {
+    public void persistedShardCountIsAdoptedWithoutOptIn() {
         String magazineIdentifier = "SHARD_ADOPT_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 2);
@@ -296,7 +301,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void shardIncreaseIsPersistedWhenExplicitlyAllowed() throws ExecutionException, RetryException {
+    public void shardIncreaseIsPersistedWhenExplicitlyAllowed() {
         String magazineIdentifier = "SHARD_INCREASE_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 2);
@@ -313,7 +318,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void unshardedMagazineIsNotPromotedWithoutOptIn() throws ExecutionException, RetryException {
+    public void unshardedMagazineIsNotPromotedWithoutOptIn() {
         String magazineIdentifier = "SHARD_PROMOTE_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -328,7 +333,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void drainedUnshardedMagazineIsPromotedWhenAllowed() throws ExecutionException, RetryException {
+    public void drainedUnshardedMagazineIsPromotedWhenAllowed() {
         String magazineIdentifier = "SHARD_PROMOTE_DRAINED";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -354,8 +359,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void unshardedMagazineWithUndeliveredRecordsIsNotPromoted()
-            throws ExecutionException, RetryException {
+    public void unshardedMagazineWithUndeliveredRecordsIsNotPromoted() {
         String magazineIdentifier = "SHARD_PROMOTE_PENDING";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -378,8 +382,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void oneStorageServesMagazinesWithDifferentShardCounts()
-            throws ExecutionException, RetryException {
+    public void oneStorageServesMagazinesWithDifferentShardCounts() {
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, "MIXED_SHARDS_TWO", 2);
         seedShardConfiguration(metaSet, "MIXED_SHARDS_EIGHT", 8);
@@ -445,7 +448,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void magazineCannotDeleteAnotherMagazinesData() throws ExecutionException, RetryException {
+    public void magazineCannotDeleteAnotherMagazinesData() {
         Magazine<String> first = Magazine.<String>builder()
                 .magazineIdentifier("DELETE_OWNER_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -461,7 +464,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void missingRecordReturnsNothingToFireAfterShardIsExhausted() throws ExecutionException, RetryException {
+    public void missingRecordReturnsNothingToFireAfterShardIsExhausted() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MISSING_RECORD_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -473,7 +476,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void fireSkipsMissingPointerWithinActiveShard() throws ExecutionException, RetryException {
+    public void fireSkipsMissingPointerWithinActiveShard() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITH_POINTER_HOLE")
                 .baseMagazineStorage(buildStorage(
@@ -533,7 +536,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void fireSkipsMoreThanFiveMissingPointers() throws ExecutionException, RetryException {
+    public void fireSkipsMoreThanFiveMissingPointers() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITH_MANY_POINTER_HOLES")
                 .baseMagazineStorage(buildStorage(
@@ -556,8 +559,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void fireGivesUpWithRetriesExhaustedWhenHoleBudgetIsSpent()
-            throws ExecutionException, RetryException {
+    public void fireGivesUpWithRetriesExhaustedWhenHoleBudgetIsSpent() {
         // A run of holes longer than the budget must NOT report NOTHING_TO_FIRE: data may still
         // exist further along the shard, so the caller has to be able to tell "gave up" from
         // "queue is empty".
@@ -583,8 +585,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void fireSurfacesMissingMetadataRatherThanHidingTheShard()
-            throws ExecutionException, RetryException {
+    public void fireSurfacesMissingMetadataRatherThanHidingTheShard() {
         // metaDataTtl is validated to outlive recordTtl, so a missing metadata record is an
         // invariant violation, not a drained shard. It must be loud rather than silently
         // suppressing the shard, which would look identical to an empty queue.
@@ -606,11 +607,9 @@ public class MagazineTest {
     }
 
     @Test
-    public void dedupeSuppressesRepeatedLoadOverTheShippedDlmClasspath()
-            throws ExecutionException, RetryException {
-        // Guards the DLM classpath: magazine-core excludes every DLM transitive, on the basis that
-        // the Aerospike lock path only needs aerospike-client, guava-retrying and slf4j, which we
-        // already declare. If that ever stops holding, this fails with NoClassDefFoundError.
+    public void dedupeSuppressesRepeatedLoad() {
+        // The marker is claimed with a CREATE_ONLY write, so the server admits exactly one creator
+        // and the second load is suppressed without any lock or read-before-write.
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("DEDUPE_CLASSPATH_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, true))
@@ -622,8 +621,95 @@ public class MagazineTest {
         assertEquals("SAME", magazine.fire().getData());
     }
 
+    /**
+     * The marker is written before the payload, so a load that never completes must withdraw it.
+     * Otherwise a transient write failure would suppress every legitimate retry until the TTL
+     * elapsed - silently dropping the caller's data.
+     */
     @Test
-    public void interruptedFireRetryPreservesInterruptStatus() throws ExecutionException, RetryException {
+    public void unconfirmedDeDupeClaimIsWithdrawnSoRetriesAreNotSuppressed() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        DeDupeGuard<String> guard = DeDupeGuard.aerospike(aerospikeClient,
+                new MagazineMetrics(registry), "NAMESPACE", "FARM_ID", "CLIENT_ID",
+                MagazineScope.LOCAL, 30 * 24 * 60 * 60);
+
+        // First claim wins, but is abandoned without confirmation - as a failed load would.
+        try (DeDupeGuard.Handle abandoned = guard.claim("WITHDRAWN_CLAIM_MAGAZINE", "PAYLOAD")) {
+            assertFalse(abandoned.duplicate());
+        }
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "withdraw_dedupe_marker"));
+
+        // Because the claim was withdrawn, a retry is admitted rather than suppressed.
+        try (DeDupeGuard.Handle retry = guard.claim("WITHDRAWN_CLAIM_MAGAZINE", "PAYLOAD")) {
+            assertFalse(retry.duplicate());
+            retry.confirm();
+        }
+
+        // Now that it is confirmed the marker stands, and the payload is suppressed.
+        try (DeDupeGuard.Handle suppressed = guard.claim("WITHDRAWN_CLAIM_MAGAZINE", "PAYLOAD")) {
+            assertTrue(suppressed.duplicate());
+        }
+        assertEquals(2.0, counterValue(registry, "magazine.dedupe.outcomes", "outcome", "claimed"));
+        assertEquals(1.0, counterValue(registry, "magazine.dedupe.outcomes", "outcome", "duplicate"));
+    }
+
+    /**
+     * Pins the round-trip cost of the hot paths. These numbers are the whole point of the claim
+     * rewrite, and nothing else in the suite would notice a regression that silently reintroduced
+     * a read before the claim.
+     */
+    @Test
+    public void hotPathRoundTripCountsAreBounded() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AerospikeStorage<String> storage = buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
+                        30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient,
+                registry);
+        MagazineContext context = storage.initialize("ROUND_TRIP_MAGAZINE");
+
+        assertTrue(storage.load(context, "PAYLOAD"));
+        // allocate the pointer, write the payload, publish the counter
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "increment_load_pointer"));
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls", "operation", "write_data"));
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "increment_load_counter"));
+
+        assertEquals("PAYLOAD", storage.fire(context).getData());
+        // claim the pointer, read the payload, publish the counter - and crucially NO separate
+        // pointer read, which is what used to make the claim lose under concurrency.
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "claim_fire_pointer"));
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls", "operation", "read_data"));
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "increment_fire_counter"));
+        // exactly one claim, and it was won - no contention retries
+        assertEquals(1.0, counterValue(registry, "magazine.fire.claims", "outcome", "won"));
+        assertEquals(1.0, counterValue(registry, "magazine.fire.outcomes", "outcome", "delivered"));
+    }
+
+    @Test
+    public void metricsCanBeDisabledExplicitlyEvenWithARegistry() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AerospikeStorage<String> storage = buildStorage(
+                AerospikeStorageConfig.builder()
+                        .namespace("NAMESPACE").dataSetName("DATA_SET").metaSetName("META_SET")
+                        .recordTtl(30 * 24 * 60 * 60).metaDataTtl(2 * 30 * 24 * 60 * 60)
+                        .shards(1).metricsEnabled(false).build(),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL,
+                aerospikeClient, registry);
+        MagazineContext context = storage.initialize("METRICS_DISABLED_MAGAZINE");
+
+        assertTrue(storage.load(context, "PAYLOAD"));
+
+        assertEquals(0.0, counterValue(registry, "magazine.aerospike.calls", "operation", "write_data"));
+        assertTrue(registry.getMeters().isEmpty(), "disabled metrics must register no meters");
+    }
+
+    @Test
+    public void interruptedFireRetryPreservesInterruptStatus() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("INTERRUPTED_FIRE_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -641,7 +727,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void dedupeDisabledDoesNotInitializeLockManager() throws ExecutionException, RetryException {
+    public void dedupeDisabledAllowsRepeatedLoad() {
         AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITHOUT_DEDUPE")
@@ -829,7 +915,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void payloadTypeValidationTest() throws ExecutionException, RetryException {
+    public void payloadTypeValidationTest() {
         Magazine<String> stringMagazine = magazineManager.getMagazine("MAGAZINE_ID1");
         assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> stringMagazine.load(null));
         assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> buildStorage(
@@ -846,7 +932,7 @@ public class MagazineTest {
     }
 
     @Test
-    public void notImplementedGlobalScopeTest() throws ExecutionException, RetryException {
+    public void notImplementedGlobalScopeTest() {
         MagazineException exception = assertThrows(MagazineException.class, () -> Magazine.<Long>builder()
                     .magazineIdentifier("MAGAZINE_ID")
                     .baseMagazineStorage(AerospikeStorage.<Long>builder()
@@ -887,7 +973,7 @@ public class MagazineTest {
 
     private Magazine<String> buildUnshardedMagazine(final String magazineIdentifier,
             final String dataSetName,
-            final String metaSetName) throws ExecutionException, RetryException {
+            final String metaSetName) {
         return Magazine.<String>builder()
                 .magazineIdentifier(magazineIdentifier)
                 .baseMagazineStorage(buildStorage(
@@ -904,6 +990,17 @@ public class MagazineTest {
             final String clientId,
             final MagazineScope scope,
             final AerospikeClient client) {
+        return buildStorage(config, clazz, enableDeDupe, farmId, clientId, scope, client, null);
+    }
+
+    private <T> AerospikeStorage<T> buildStorage(final AerospikeStorageConfig config,
+            final Class<T> clazz,
+            final boolean enableDeDupe,
+            final String farmId,
+            final String clientId,
+            final MagazineScope scope,
+            final AerospikeClient client,
+            final MeterRegistry meterRegistry) {
         return AerospikeStorage.<T>builder()
                 .clazz(clazz)
                 .storageConfig(config)
@@ -912,7 +1009,18 @@ public class MagazineTest {
                 .farmId(farmId)
                 .clientId(clientId)
                 .scope(scope)
+                .meterRegistry(meterRegistry)
                 .build();
+    }
+
+    /** @return the counter's value, or 0 when it was never registered. */
+    private static double counterValue(final SimpleMeterRegistry registry,
+            final String name,
+            final String tagKey,
+            final String tagValue) {
+        return registry.find(name).tag(tagKey, tagValue).counters().stream()
+                .mapToDouble(Counter::count)
+                .sum();
     }
 
     private AerospikeStorageConfig buildStorageConfig(final String namespace,

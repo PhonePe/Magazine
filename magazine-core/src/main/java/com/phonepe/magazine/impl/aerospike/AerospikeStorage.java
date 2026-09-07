@@ -18,29 +18,32 @@ package com.phonepe.magazine.impl.aerospike;
 
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Record;
-import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.core.BaseMagazineStorage;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MagazineScope;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.entity.StorageType;
+import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
-import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryerFactory;
+import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.impl.aerospike.store.ActiveShardSelector;
 import com.phonepe.magazine.impl.aerospike.store.DeDupeGuard;
 import com.phonepe.magazine.impl.aerospike.store.MagazineDataStore;
 import com.phonepe.magazine.impl.aerospike.store.MagazineMetadataStore;
+import com.phonepe.magazine.metrics.MagazineMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -49,17 +52,9 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Aerospike-backed magazine storage.
  * <p>
- * This class orchestrates only. The pieces it coordinates are:
- * <ul>
- *   <li>{@link com.phonepe.magazine.impl.aerospike.common.AerospikeNaming} - key and set naming</li>
- *   <li>{@link MagazineMetadataStore} - pointers, counters and the fire-pointer claim</li>
- *   <li>{@link MagazineDataStore} - the payload records</li>
- *   <li>{@link ActiveShardSelector} - which shard to fire from</li>
- *   <li>{@link DeDupeGuard} - duplicate suppression on load</li>
- *   <li>{@link AerospikeMagazineInitializer} - per-magazine configuration resolution</li>
- * </ul>
- * A single instance may serve many magazines, so it holds no per-magazine state; everything
- * magazine-specific arrives in the {@link MagazineContext}.
+ * Orchestration only; the work lives in the collaborators it builds. A single instance may serve
+ * many magazines, so it holds no per-magazine state - everything magazine-specific arrives in the
+ * {@link MagazineContext}.
  */
 @Slf4j
 @EqualsAndHashCode(callSuper = true, onlyExplicitlyIncluded = true)
@@ -73,8 +68,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private final String metaSetName;
 
     private final Class<T> clazz;
-    private final int maxFireContentionAttempts;
     private final int maxFireHoleSkips;
+    private final MagazineMetrics metrics;
     private final AerospikeMagazineInitializer initializer;
     private final MagazineMetadataStore metadataStore;
     private final MagazineDataStore<T> dataStore;
@@ -89,29 +84,31 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
             final String farmId,
             final Class<T> clazz,
             final String clientId,
-            final MagazineScope scope) {
+            final MagazineScope scope,
+            final MeterRegistry meterRegistry) {
         super(StorageType.AEROSPIKE, AerospikeStorageValidator.validateConfig(storageConfig).getRecordTtl(),
                 storageConfig.getMetaDataTtl(), farmId, enableDeDupe, clientId, scope);
         AerospikeStorageValidator.validateStorage(aerospikeClient, clazz, enableDeDupe);
 
         this.clazz = clazz;
-        this.maxFireContentionAttempts = storageConfig.getMaxFireContentionAttempts();
         this.maxFireHoleSkips = storageConfig.getMaxFireHoleSkips();
         this.namespace = storageConfig.getNamespace();
         this.dataSetName = AerospikeNaming.resolveSetName(storageConfig.getDataSetName(), farmId, scope);
         this.metaSetName = AerospikeNaming.resolveSetName(storageConfig.getMetaSetName(), farmId, scope);
+        this.metrics = resolveMetrics(storageConfig.isMetricsEnabled(), meterRegistry);
 
-        final AerospikeRetryerFactory retryerFactory = new AerospikeRetryerFactory();
+        final AerospikeRetryer retryerFactory = new AerospikeRetryer();
         this.initializer = new AerospikeMagazineInitializer(aerospikeClient, retryerFactory,
                 namespace, metaSetName, storageConfig.getShards(), storageConfig.isAllowShardIncrease());
-        this.metadataStore = new MagazineMetadataStore(aerospikeClient, retryerFactory,
+        this.metadataStore = new MagazineMetadataStore(aerospikeClient, retryerFactory, metrics,
                 namespace, metaSetName, getMetaDataTtl());
-        this.dataStore = new MagazineDataStore<>(aerospikeClient, retryerFactory,
+        this.dataStore = new MagazineDataStore<>(aerospikeClient, retryerFactory, metrics,
                 namespace, dataSetName, getRecordTtl(), clazz);
-        this.activeShards = new ActiveShardSelector(this::loadActiveShards);
+        this.activeShards = new ActiveShardSelector(this::loadActiveShards,
+                storageConfig.getActiveShardRefreshSeconds());
 
         this.deDupeGuard = enableDeDupe
-                ? DeDupeGuard.aerospike(aerospikeClient, retryerFactory, namespace,
+                ? DeDupeGuard.aerospike(aerospikeClient, metrics, namespace,
                         farmId, clientId, scope, getRecordTtl())
                 : DeDupeGuard.disabled();
     }
@@ -124,26 +121,43 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     @Override
     public boolean load(final MagazineContext context, final T data) {
         validateDataType(data);
-        try (DeDupeGuard.Handle handle = deDupeGuard.acquire(context.getMagazineIdentifier(), data)) {
-            if (handle.alreadyLoaded()) {
+        final long startNanos = metrics.startNanos();
+        try (DeDupeGuard.Handle handle = deDupeGuard.claim(context.getMagazineIdentifier(), data)) {
+            if (handle.duplicate()) {
+                metrics.loadOutcome(context.getMagazineIdentifier(), MagazineMetrics.LoadOutcome.DUPLICATE);
                 return true;
             }
             final boolean loaded = append(context, data);
             if (loaded) {
-                handle.remember();
+                // Confirming keeps the marker; without it the handle withdraws it on close so a
+                // failed write does not suppress a legitimate retry until the TTL elapses.
+                handle.confirm();
             }
+            metrics.loadOutcome(context.getMagazineIdentifier(),
+                    loaded ? MagazineMetrics.LoadOutcome.LOADED : MagazineMetrics.LoadOutcome.FAILED);
             return loaded;
         } catch (Exception e) {
+            metrics.loadOutcome(context.getMagazineIdentifier(), MagazineMetrics.LoadOutcome.FAILED);
             throw mapFailure(e, ErrorMessage.ERROR_LOADING_DATA, context);
+        } finally {
+            metrics.recordLoad(startNanos, context.getMagazineIdentifier());
         }
     }
 
+    /**
+     * Republishes an already-counted payload.
+     * <p>
+     * Deliberately not deduplicated: reload exists precisely to load a payload that has been seen
+     * before, so consulting the duplicate marker would suppress every call. Earlier releases took
+     * and released a distributed lock here without ever reading it - two round trips that bought
+     * nothing.
+     */
     @Override
     public boolean reload(final MagazineContext context, final T data) {
         validateDataType(data);
-        try (DeDupeGuard.Handle handle = deDupeGuard.acquire(context.getMagazineIdentifier(), data)) {
-            // Reload republishes an already-counted payload, so the load counter must not move.
-            // Decrementing the fire counter restores the pending balance instead.
+        try {
+            // The load counter must not move; decrementing the fire counter restores the pending
+            // balance instead.
             final Integer shard = selectShard(context);
             final long loadPointer = metadataStore.incrementAndGetLoadPointer(context, shard);
             final boolean loaded = dataStore.write(context, shard, loadPointer, data);
@@ -159,69 +173,69 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     /**
      * Claims the next record on a randomly chosen active shard.
      * <p>
-     * Two retry budgets are tracked because they bound different failure modes:
-     * <ul>
-     *   <li><b>contention</b> - the pointer claim was lost, nothing advanced. Backed off with full
-     *       jitter and bounded, since unbounded retries here are a thundering herd.</li>
-     *   <li><b>hole skips</b> - the claim was won but the data record was absent, so the pointer
-     *       advanced past a slot whose write had failed. That <em>is</em> forward progress, so it
-     *       must not consume the contention budget or a sparse shard would fail spuriously.</li>
-     * </ul>
-     * Exhausting either yields {@code RETRIES_EXHAUSTED} - "gave up, data may still exist" -
-     * deliberately distinct from {@code NOTHING_TO_FIRE}, raised only when every shard is drained.
+     * The claim is a single guarded atomic increment, so competing consumers receive distinct
+     * pointers and a claim is never lost - there is no contention budget, no backoff, and the
+     * round trips per dequeue do not scale with consumer count.
+     * <p>
+     * The one bounded loop left is <b>hole skips</b>: the claim succeeded but the data record was
+     * absent because that slot's write had failed. Exhausting the budget yields
+     * {@code RETRIES_EXHAUSTED} - "gave up, data may still exist" - deliberately distinct from
+     * {@code NOTHING_TO_FIRE}, raised only when every shard is drained.
      */
     @Override
     public MagazineData<T> fire(final MagazineContext context) {
-        int contentionAttempts = 0;
+        final String magazineIdentifier = context.getMagazineIdentifier();
+        final long startNanos = metrics.startNanos();
         int holeSkips = 0;
         try {
             while (true) {
-                final Integer shard = activeShards.randomShardForFire(context);
-                final Record metadata = metadataStore.readPointers(context, shard);
-                if (Objects.isNull(metadata)) {
-                    throw MagazineMetadataStore.missingMetadata(context, shard);
+                // The loop no longer blocks on anything that would throw InterruptedException, so
+                // the interrupt has to be observed explicitly. Without this a consumer shutting
+                // down mid-drain would keep skipping holes until its budget ran out.
+                if (Thread.currentThread().isInterrupted()) {
+                    throw MagazineExceptions.retriesExhausted(
+                            String.format(ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier));
                 }
-
-                final long firePointer = metadata.getLong(AerospikeConstants.FIRE_POINTER);
-                if (firePointer >= metadata.getLong(AerospikeConstants.LOAD_POINTER)) {
+                final Integer shard = activeShards.randomShardForFire(context);
+                final OptionalLong claimed = metadataStore.claimFirePointer(context, shard);
+                if (claimed.isEmpty()) {
+                    // Nothing left on this shard. Prune it rather than wait for the next refresh;
+                    // once every shard is pruned the selector raises NOTHING_TO_FIRE.
+                    metrics.fireClaim(magazineIdentifier, MagazineMetrics.ClaimOutcome.DRAINED);
                     activeShards.suppress(context, shard);
                     continue;
                 }
+                metrics.fireClaim(magazineIdentifier, MagazineMetrics.ClaimOutcome.WON);
 
-                final long claimedPointer = firePointer + 1;
+                final long claimedPointer = claimed.getAsLong();
                 final Record dataRecord = dataStore.read(context, shard, claimedPointer);
-                if (!metadataStore.claimFirePointer(context, shard, firePointer, Objects.nonNull(dataRecord))) {
-                    if (++contentionAttempts >= maxFireContentionAttempts) {
-                        throw MagazineExceptions.retriesExhausted(
-                                String.format(ErrorMessage.ERROR_FIRING_DATA, context.getMagazineIdentifier()));
-                    }
-                    backoff(contentionAttempts);
-                    continue;
-                }
-
-                contentionAttempts = 0; // progress resets the contention budget
                 if (Objects.isNull(dataRecord)) {
+                    metrics.fireHoleSkip(magazineIdentifier);
                     if (++holeSkips >= maxFireHoleSkips) {
                         throw MagazineExceptions.retriesExhausted(
-                                String.format(ErrorMessage.ERROR_FIRING_DATA, context.getMagazineIdentifier()));
+                                String.format(ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier));
                     }
-                    continue; // advanced past a hole - no backoff, this was forward progress
+                    continue; // advanced past a hole - this was forward progress
                 }
 
-                if (!AerospikeNaming.usesUnifiedMetadata(context)) {
-                    // Legacy split schema cannot advance pointer and counter atomically; a crash
-                    // here under-counts fires, which only inflates reported pending.
-                    metadataStore.incrementFireCounter(context, shard);
-                }
+                // Cannot ride along with the claim: at claim time we do not yet know whether the
+                // slot holds data, and only real deliveries may be counted. See
+                // MagazineMetadataStore#incrementFireCounter for why under-counting is safe.
+                metadataStore.incrementFireCounter(context, shard);
+                metrics.fireOutcome(magazineIdentifier, MagazineMetrics.FireOutcome.DELIVERED);
                 return MagazineData.<T>builder()
                         .firePointer(claimedPointer)
                         .shard(shard)
-                        .magazineIdentifier(context.getMagazineIdentifier())
+                        .magazineIdentifier(magazineIdentifier)
                         .data(clazz.cast(dataRecord.getValue(AerospikeConstants.DATA)))
                         .build();
             }
         } catch (Exception e) {
-            throw mapFailure(e, ErrorMessage.ERROR_FIRING_DATA, context);
+            final MagazineException failure = mapFailure(e, ErrorMessage.ERROR_FIRING_DATA, context);
+            metrics.fireOutcome(magazineIdentifier, outcomeOf(failure));
+            throw failure;
+        } finally {
+            metrics.recordFire(startNanos, magazineIdentifier);
         }
     }
 
@@ -259,8 +273,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
     }
 
-    private boolean append(final MagazineContext context, final T data)
-            throws ExecutionException, RetryException {
+    private boolean append(final MagazineContext context, final T data) {
         final Integer shard = selectShard(context);
         final long loadPointer = metadataStore.incrementAndGetLoadPointer(context, shard);
         final boolean written = dataStore.write(context, shard, loadPointer, data);
@@ -286,13 +299,40 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     }
 
     /**
-     * Capped exponential backoff with full jitter. Full jitter rather than additive is what
-     * actually decorrelates competing firers - without it they retry in lockstep.
+     * Resolves where meters go.
+     * <p>
+     * A builder that was given no registry falls back to Micrometer's
+     * {@link Metrics#globalRegistry}, so an application wires its backend once - the Dropwizard
+     * bundle does this for you - instead of threading a registry through every storage it builds.
+     * The global registry is a composite: with nothing attached it discards, and attaching a child
+     * later still picks up meters registered before the attach, so bootstrap order does not matter.
+     * <p>
+     * {@code metricsEnabled=false} yields a private empty composite instead of a flag tested on
+     * every record: its counters are no-ops, and because it is not the global registry it cannot
+     * pick up a backend attached later.
      */
-    private static void backoff(final int attempt) throws InterruptedException {
-        final long ceiling = Math.min(AerospikeConstants.FIRE_BACKOFF_MAX_MS,
-                AerospikeConstants.FIRE_BACKOFF_BASE_MS * (1L << Math.min(attempt, 16)));
-        TimeUnit.MILLISECONDS.sleep(ThreadLocalRandom.current().nextLong(1, ceiling + 1));
+    private static MagazineMetrics resolveMetrics(final boolean metricsEnabled,
+            final MeterRegistry meterRegistry) {
+        if (!metricsEnabled) {
+            return new MagazineMetrics(new CompositeMeterRegistry());
+        }
+        if (Objects.isNull(meterRegistry)) {
+            log.debug("No MeterRegistry supplied; Magazine metrics will go to Micrometer's global "
+                    + "registry. Attach a backend with Metrics.addRegistry(..), or set "
+                    + "metricsEnabled false to opt out explicitly.");
+            return new MagazineMetrics(Metrics.globalRegistry);
+        }
+        return new MagazineMetrics(meterRegistry);
+    }
+
+    /** Distinguishes a drained magazine from a genuine give-up in the outcome metric. */
+    private static MagazineMetrics.FireOutcome outcomeOf(final MagazineException failure) {
+        if (failure.getErrorCode() == ErrorCode.NOTHING_TO_FIRE) {
+            return MagazineMetrics.FireOutcome.EMPTY;
+        }
+        return failure.getErrorCode() == ErrorCode.RETRIES_EXHAUSTED
+                ? MagazineMetrics.FireOutcome.EXHAUSTED
+                : MagazineMetrics.FireOutcome.FAILED;
     }
 
     private void validateDataType(final T data) {
@@ -301,22 +341,25 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         }
     }
 
+    /**
+     * Normalises anything thrown on a storage path into a {@link MagazineException}.
+     * <p>
+     * An interrupt is reported as {@code RETRIES_EXHAUSTED} with the flag restored, so a consumer
+     * shutting down stops rather than looping.
+     */
     private MagazineException mapFailure(final Exception exception,
             final String errorMessage,
             final MagazineContext context) {
-        final String message = String.format(errorMessage, context.getMagazineIdentifier());
-        if (exception instanceof InterruptedException || isInterrupted(exception)) {
-            Thread.currentThread().interrupt();
-            return MagazineExceptions.retriesExhausted(message, exception);
+        if (exception instanceof MagazineException magazineException) {
+            return magazineException;
         }
-        if (exception instanceof MagazineException || exception.getCause() instanceof MagazineException) {
+        final String message = String.format(errorMessage, context.getMagazineIdentifier());
+        if (exception.getCause() instanceof MagazineException) {
             return MagazineException.propagate(exception);
         }
-        if (exception instanceof RetryException) {
+        if (isInterrupted(exception)) {
+            Thread.currentThread().interrupt();
             return MagazineExceptions.retriesExhausted(message, exception);
-        }
-        if (exception instanceof ExecutionException) {
-            return MagazineExceptions.connectionError(message, exception);
         }
         return MagazineException.propagate(exception);
     }

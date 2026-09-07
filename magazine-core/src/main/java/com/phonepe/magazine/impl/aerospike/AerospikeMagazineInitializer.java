@@ -26,16 +26,14 @@ import com.aerospike.client.ResultCode;
 import com.aerospike.client.exp.Exp;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
-import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
-import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryerFactory;
+import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,7 +50,7 @@ import lombok.extern.slf4j.Slf4j;
 final class AerospikeMagazineInitializer {
 
     private final IAerospikeClient client;
-    private final AerospikeRetryerFactory retryerFactory;
+    private final AerospikeRetryer retryerFactory;
     private final String namespace;
     private final String metaSetName;
     /** Shard count applied only when creating a magazine that does not yet exist. */
@@ -64,17 +62,13 @@ final class AerospikeMagazineInitializer {
             return resolve(magazineIdentifier);
         } catch (MagazineException e) {
             throw e;
-        } catch (RetryException e) {
-            throw MagazineExceptions.retriesExhausted(
-                    String.format(ErrorMessage.ERROR_INITIALIZING_MAGAZINE, magazineIdentifier), e);
         } catch (Exception e) {
             throw MagazineExceptions.connectionError(
                     String.format(ErrorMessage.ERROR_INITIALIZING_MAGAZINE, magazineIdentifier), e);
         }
     }
 
-    private MagazineContext resolve(final String magazineIdentifier)
-            throws ExecutionException, RetryException {
+    private MagazineContext resolve(final String magazineIdentifier) {
         final Key shardConfigurationKey = new Key(namespace, metaSetName,
                 AerospikeNaming.shardConfigurationName(magazineIdentifier));
         Record shardConfiguration = read(shardConfigurationKey);
@@ -117,7 +111,7 @@ final class AerospikeMagazineInitializer {
     private int reconcileShards(final Key shardConfigurationKey,
             final String magazineIdentifier,
             final int storedShards,
-            final int schemaVersion) throws ExecutionException, RetryException {
+            final int schemaVersion) {
         if (configuredShards == storedShards) {
             return storedShards;
         }
@@ -156,7 +150,7 @@ final class AerospikeMagazineInitializer {
      * unreachable under a sharded layout, so undelivered data would be silently lost.
      */
     private void verifyUnshardedMagazineIsDrained(final String magazineIdentifier,
-            final int schemaVersion) throws ExecutionException, RetryException {
+            final int schemaVersion) {
         final String suffix = schemaVersion == AerospikeConstants.UNIFIED_METADATA_SCHEMA_VERSION
                 ? AerospikeConstants.METADATA
                 : AerospikeConstants.POINTERS;
@@ -176,7 +170,7 @@ final class AerospikeMagazineInitializer {
         }
     }
 
-    private Record read(final Key key) throws ExecutionException, RetryException {
+    private Record read(final Key key) {
         return retryerFactory.call(() -> client.get(client.getReadPolicyDefault(), key));
     }
 
@@ -198,7 +192,7 @@ final class AerospikeMagazineInitializer {
 
     private void increaseShards(final Key key,
             final int expectedShards,
-            final int targetShards) throws ExecutionException, RetryException {
+            final int targetShards) {
         retryerFactory.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;

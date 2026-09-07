@@ -26,19 +26,21 @@ import com.aerospike.client.ResultCode;
 import com.aerospike.client.exp.Exp;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
-import com.github.rholder.retry.RetryException;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
-import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryerFactory;
+import com.phonepe.magazine.impl.aerospike.common.AerospikePolicies;
+import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
+import com.phonepe.magazine.metrics.MagazineMetrics;
+import com.phonepe.magazine.metrics.StorageOperation;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
-import lombok.RequiredArgsConstructor;
+import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Reads and writes the per-shard metadata records: load/fire pointers and load/fire counters.
@@ -46,65 +48,88 @@ import lombok.RequiredArgsConstructor;
  * Pointers and counters live in one record under the unified schema and in two under the legacy
  * schema; that difference is confined to {@link AerospikeNaming}, so every method here is written
  * once and works for both.
+ *
+ * The filter expression, the write policies and the metadata keys are all constant per magazine
+ * and all resolved once: {@link Exp#build} serialises to a byte array, a policy is a ~25-field
+ * copy, and {@link Key} construction runs a RIPEMD-160 digest. Rebuilding those per operation was
+ * pure overhead on every round trip.
  */
-@RequiredArgsConstructor(access = lombok.AccessLevel.PUBLIC)
 public final class MagazineMetadataStore {
 
+    /**
+     * The claim's precondition: this shard still has an unconsumed slot. Absent bins read as zero,
+     * so a record never fired from does not make the comparison unknown.
+     */
+    private static final com.aerospike.client.exp.Expression FIRE_POINTER_BEHIND_LOAD_POINTER =
+            Exp.build(Exp.lt(
+                    binOrZero(AerospikeConstants.FIRE_POINTER),
+                    binOrZero(AerospikeConstants.LOAD_POINTER)));
+
     private final IAerospikeClient client;
-    private final AerospikeRetryerFactory retryerFactory;
+    private final AerospikeRetryer retryerFactory;
+    private final MagazineMetrics metrics;
     private final String namespace;
     private final String metaSetName;
-    private final int metaDataTtl;
 
-    public Record readPointers(final MagazineContext context, final Integer shard)
-            throws ExecutionException, RetryException {
-        final Key key = pointerKey(context, shard);
-        return retryerFactory.call(() -> client.get(client.getReadPolicyDefault(), key));
+    private final WritePolicy claimPolicy;
+    private final WritePolicy adjustPolicy;
+    /** Bounded by the number of configured magazines. */
+    private final Map<MagazineContext, MetadataKeys> keyCache = new ConcurrentHashMap<>();
+
+    public MagazineMetadataStore(final IAerospikeClient client,
+            final AerospikeRetryer retryerFactory,
+            final MagazineMetrics metrics,
+            final String namespace,
+            final String metaSetName,
+            final int metaDataTtl) {
+        this.client = client;
+        this.retryerFactory = retryerFactory;
+        this.metrics = metrics;
+        this.namespace = namespace;
+        this.metaSetName = metaSetName;
+
+        this.claimPolicy = AerospikePolicies.writePolicy(client);
+        this.claimPolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
+        this.claimPolicy.maxRetries = 0;
+        this.claimPolicy.failOnFilteredOut = true;
+        this.claimPolicy.expiration = metaDataTtl;
+        this.claimPolicy.filterExp = FIRE_POINTER_BEHIND_LOAD_POINTER;
+
+        this.adjustPolicy = AerospikePolicies.writePolicy(client);
+        this.adjustPolicy.recordExistsAction = RecordExistsAction.UPDATE;
+        this.adjustPolicy.expiration = metaDataTtl;
     }
 
     /**
-     * Atomically advances {@code FIRE_POINTER} if and only if it still holds
-     * {@code expectedFirePointer}, claiming that pointer for exactly one caller. Under the unified
-     * schema {@code FIRE_COUNTER} advances in the same operation when a data record was found, so
-     * pointer and counter can never disagree.
+     * Atomically claims the next fire pointer on a shard.
      * <p>
-     * Deliberately <em>not</em> retried: {@link Operation#add} is not idempotent, so retrying after
-     * a timeout could double-advance the pointer and drop a record. The cost is that a timeout the
-     * server did apply silently skips one record - the at-most-once boundary documented on
-     * {@link com.phonepe.magazine.Magazine#fire()}.
+     * The claim is a single guarded increment: the filter expression asserts
+     * {@code FIRE_POINTER < LOAD_POINTER} against the pre-write record, and the increment returns
+     * the value it produced. Because every caller increments rather than compare-and-swapping an
+     * expected value, <em>distinct callers always receive distinct pointers</em>. There is no
+     * such thing as a lost claim, so no contention budget, no backoff and no thundering herd -
+     * the previous read-then-CAS made every concurrent consumer read the same pointer and all but
+     * one fail, which made the call count per dequeue scale with consumer count.
+     * <p>
+     * A filtered-out claim means the shard is drained, which is the caller's signal to suppress it.
+     * <p>
+     * Deliberately <em>not</em> retried: {@link Operation#add} is not idempotent, so retrying
+     * after a timeout could double-advance the pointer and drop a record. The cost is that a
+     * timeout the server did apply silently skips one record - the at-most-once boundary
+     * documented on {@link com.phonepe.magazine.Magazine#fire()}.
      *
-     * @return true if this caller won the pointer, false if another caller got there first.
+     * @return the claimed pointer, or empty when the shard has nothing left to fire.
      */
-    public boolean claimFirePointer(final MagazineContext context,
-            final Integer shard,
-            final long expectedFirePointer,
-            final boolean incrementCounter) {
-        final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
-        writePolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
-        writePolicy.maxRetries = 0;
-        writePolicy.failOnFilteredOut = true;
-        writePolicy.expiration = metaDataTtl;
-        // A fresh record may not carry the bin at all, so treat "absent" and "zero" alike.
-        writePolicy.filterExp = Exp.build(expectedFirePointer == 0L
-                ? Exp.or(
-                        Exp.not(Exp.binExists(AerospikeConstants.FIRE_POINTER)),
-                        Exp.eq(Exp.intBin(AerospikeConstants.FIRE_POINTER), Exp.val(0L)))
-                : Exp.eq(Exp.intBin(AerospikeConstants.FIRE_POINTER), Exp.val(expectedFirePointer)));
-
+    public OptionalLong claimFirePointer(final MagazineContext context, final Integer shard) {
+        metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.CLAIM_FIRE_POINTER);
         try {
-            final Key key = pointerKey(context, shard);
-            if (incrementCounter && AerospikeNaming.usesUnifiedMetadata(context)) {
-                client.operate(writePolicy, key,
-                        Operation.add(new Bin(AerospikeConstants.FIRE_POINTER, 1L)),
-                        Operation.add(new Bin(AerospikeConstants.FIRE_COUNTER, 1L)));
-            } else {
-                client.operate(writePolicy, key,
-                        Operation.add(new Bin(AerospikeConstants.FIRE_POINTER, 1L)));
-            }
-            return true;
+            final Record record = client.operate(claimPolicy, pointerKey(context, shard),
+                    Operation.add(new Bin(AerospikeConstants.FIRE_POINTER, 1L)),
+                    Operation.get(AerospikeConstants.FIRE_POINTER));
+            return OptionalLong.of(record.getLong(AerospikeConstants.FIRE_POINTER));
         } catch (AerospikeException e) {
             if (e.getResultCode() == ResultCode.FILTERED_OUT) {
-                return false;
+                return OptionalLong.empty();
             }
             if (e.getResultCode() == ResultCode.KEY_NOT_FOUND_ERROR) {
                 throw missingMetadata(context, shard);
@@ -113,10 +138,9 @@ public final class MagazineMetadataStore {
         }
     }
 
-    public long incrementAndGetLoadPointer(final MagazineContext context, final Integer shard)
-            throws ExecutionException, RetryException {
-        final Record record = operateOnMetadata(pointerKey(context, shard),
-                AerospikeConstants.LOAD_POINTER, 1L);
+    public long incrementAndGetLoadPointer(final MagazineContext context, final Integer shard) {
+        final Record record = operateOnMetadata(pointerKey(context, shard), context,
+                StorageOperation.INCREMENT_LOAD_POINTER, AerospikeConstants.LOAD_POINTER, 1L);
         if (Objects.isNull(record)) {
             throw MagazineExceptions.magazineUnprepared(
                     String.format(ErrorMessage.ERROR_READING_POINTERS, context.getMagazineIdentifier()));
@@ -124,27 +148,34 @@ public final class MagazineMetadataStore {
         return record.getLong(AerospikeConstants.LOAD_POINTER);
     }
 
-    public void incrementLoadCounter(final MagazineContext context, final Integer shard)
-            throws ExecutionException, RetryException {
-        adjustCounter(context, shard, AerospikeConstants.LOAD_COUNTER, 1L);
+    public void incrementLoadCounter(final MagazineContext context, final Integer shard) {
+        adjustCounter(context, shard, StorageOperation.INCREMENT_LOAD_COUNTER, AerospikeConstants.LOAD_COUNTER, 1L);
     }
 
-    public void incrementFireCounter(final MagazineContext context, final Integer shard)
-            throws ExecutionException, RetryException {
-        adjustCounter(context, shard, AerospikeConstants.FIRE_COUNTER, 1L);
+    /**
+     * Publishes a delivery in the counter ledger.
+     * <p>
+     * This can no longer ride along with the pointer claim, because the claim now happens
+     * <em>before</em> the data record is read - so at claim time we do not yet know whether the
+     * slot holds real data or is a hole, and only real deliveries may be counted. A crash between
+     * the claim and this call therefore leaves {@code FIRE_COUNTER} short, which inflates the
+     * reported pending depth and keeps the shard active a little longer. That is the safe
+     * direction: it can never hide a shard that still holds data.
+     */
+    public void incrementFireCounter(final MagazineContext context, final Integer shard) {
+        adjustCounter(context, shard, StorageOperation.INCREMENT_FIRE_COUNTER, AerospikeConstants.FIRE_COUNTER, 1L);
     }
 
-    public void decrementFireCounter(final MagazineContext context, final Integer shard)
-            throws ExecutionException, RetryException {
-        adjustCounter(context, shard, AerospikeConstants.FIRE_COUNTER, -1L);
+    public void decrementFireCounter(final MagazineContext context, final Integer shard) {
+        adjustCounter(context, shard, StorageOperation.DECREMENT_FIRE_COUNTER, AerospikeConstants.FIRE_COUNTER, -1L);
     }
 
-    public Map<String, MetaData> readAll(final MagazineContext context)
-            throws ExecutionException, RetryException {
-        final Record[] pointerRecords = batchRead(context, AerospikeNaming.pointerSuffix(context));
+    public Map<String, MetaData> readAll(final MagazineContext context) {
+        final Record[] pointerRecords = batchRead(context, keys(context).pointerKeys(),
+                StorageOperation.BATCH_READ_METADATA);
         final Record[] counterRecords = AerospikeNaming.usesUnifiedMetadata(context)
                 ? pointerRecords
-                : batchRead(context, AerospikeConstants.COUNTERS);
+                : batchRead(context, keys(context).counterKeys(), StorageOperation.BATCH_READ_METADATA);
 
         final Map<String, MetaData> metaData = new HashMap<>(capacityFor(context.getShards()));
         for (int shard = 0; shard < context.getShards(); shard++) {
@@ -169,17 +200,18 @@ public final class MagazineMetadataStore {
      * <p>
      * Both are required. Dropping the counter clause would make fire() spin through its hole-skip
      * budget on shards containing nothing but failed writes. The ledger is sound because
-     * {@code FIRE_COUNTER} can never over-count: the unified schema advances it atomically with the
-     * pointer and only when a data record was found, and the legacy schema can only under-count on
-     * crash, which fails open.
+     * {@code FIRE_COUNTER} can never over-count: it advances only after a data record was actually
+     * found, so the worst a crash can do is leave it short, which keeps the shard active and
+     * therefore fails open.
      *
      * @return shard numbers with data available to fire, ascending.
      */
-    public int[] activeShards(final MagazineContext context) throws ExecutionException, RetryException {
-        final Record[] pointerRecords = batchRead(context, AerospikeNaming.pointerSuffix(context));
+    public int[] activeShards(final MagazineContext context) {
+        final Record[] pointerRecords = batchRead(context, keys(context).pointerKeys(),
+                StorageOperation.REFRESH_ACTIVE_SHARDS);
         final Record[] counterRecords = AerospikeNaming.usesUnifiedMetadata(context)
                 ? pointerRecords
-                : batchRead(context, AerospikeConstants.COUNTERS);
+                : batchRead(context, keys(context).counterKeys(), StorageOperation.REFRESH_ACTIVE_SHARDS);
 
         final int[] active = new int[context.getShards()];
         int found = 0;
@@ -208,41 +240,70 @@ public final class MagazineMetadataStore {
 
     private void adjustCounter(final MagazineContext context,
             final Integer shard,
+            final StorageOperation operation,
             final String counterBin,
-            final long delta) throws ExecutionException, RetryException {
-        final Key key = new Key(namespace, metaSetName,
-                AerospikeNaming.name(context, shard, AerospikeNaming.counterSuffix(context)));
-        if (Objects.isNull(operateOnMetadata(key, counterBin, delta))) {
+            final long delta) {
+        if (Objects.isNull(operateOnMetadata(counterKey(context, shard), context, operation,
+                counterBin, delta))) {
             throw MagazineExceptions.magazineUnprepared(
                     String.format(ErrorMessage.ERROR_READING_COUNTERS, context.getMagazineIdentifier()));
         }
     }
 
-    private Record operateOnMetadata(final Key key, final String bin, final long delta)
-            throws ExecutionException, RetryException {
+    private Record operateOnMetadata(final Key key,
+            final MagazineContext context,
+            final StorageOperation operation,
+            final String bin,
+            final long delta) {
         return retryerFactory.call(() -> {
-            final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
-            writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
-            writePolicy.expiration = metaDataTtl;
-            return client.operate(writePolicy, key,
+            metrics.aerospikeCall(context.getMagazineIdentifier(), operation);
+            return client.operate(adjustPolicy, key,
                     Operation.add(new Bin(bin, delta)),
                     Operation.get(bin));
         });
     }
 
-    private Record[] batchRead(final MagazineContext context, final String suffix)
-            throws ExecutionException, RetryException {
-        return retryerFactory.call(() -> client.get(client.getBatchPolicyDefault(),
-                AerospikeNaming.metaKeys(namespace, metaSetName, context, suffix)));
+    private Record[] batchRead(final MagazineContext context,
+            final Key[] keys,
+            final StorageOperation operation) {
+        return retryerFactory.call(() -> {
+            metrics.aerospikeCall(context.getMagazineIdentifier(), operation);
+            return client.get(client.getBatchPolicyDefault(), keys, AerospikeConstants.METADATA_BINS);
+        });
     }
 
     private Key pointerKey(final MagazineContext context, final Integer shard) {
-        return new Key(namespace, metaSetName,
-                AerospikeNaming.name(context, shard, AerospikeNaming.pointerSuffix(context)));
+        return keys(context).pointerKeys[Objects.isNull(shard) ? 0 : shard];
+    }
+
+    private Key counterKey(final MagazineContext context, final Integer shard) {
+        return keys(context).counterKeys[Objects.isNull(shard) ? 0 : shard];
+    }
+
+    private MetadataKeys keys(final MagazineContext context) {
+        return keyCache.computeIfAbsent(context, this::buildKeys);
+    }
+
+    private MetadataKeys buildKeys(final MagazineContext context) {
+        final Key[] pointerKeys = AerospikeNaming.metaKeys(namespace, metaSetName, context,
+                AerospikeNaming.pointerSuffix(context));
+        // Unified magazines co-locate counters in the pointer record, so the arrays are the same.
+        final Key[] counterKeys = AerospikeNaming.usesUnifiedMetadata(context)
+                ? pointerKeys
+                : AerospikeNaming.metaKeys(namespace, metaSetName, context, AerospikeConstants.COUNTERS);
+        return new MetadataKeys(pointerKeys, counterKeys);
+    }
+
+    /** Reads an integer bin as zero when the bin is absent, so comparisons never go unknown. */
+    private static Exp binOrZero(final String bin) {
+        return Exp.cond(Exp.binExists(bin), Exp.intBin(bin), Exp.val(0L));
     }
 
     private static long longOrZero(final Record record, final String bin) {
         return Objects.nonNull(record) ? record.getLong(bin) : 0L;
+    }
+
+    private record MetadataKeys(Key[] pointerKeys, Key[] counterKeys) {
     }
 
     /** Initial capacity that avoids a rehash for the given element count at the default 0.75f. */
