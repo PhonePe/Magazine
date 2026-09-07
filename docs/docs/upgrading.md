@@ -22,14 +22,15 @@ Magazine 2.0 is a deliberate breaking release. This page lists everything you ha
 
 ## 2. Moved packages
 
-The `common`, `scope` and `util` packages are gone. Update imports:
+The `common`, `scope` and `util` packages are gone, and `StorageType` left `core`.
+Update imports:
 
 | 1.x | 2.0 |
 |---|---|
 | `com.phonepe.magazine.scope.MagazineScope` | `com.phonepe.magazine.entity.MagazineScope` |
 | `com.phonepe.magazine.common.MagazineData` | `com.phonepe.magazine.entity.MagazineData` |
 | `com.phonepe.magazine.common.MetaData` | `com.phonepe.magazine.entity.MetaData` |
-| `com.phonepe.magazine.common.StorageType` | `com.phonepe.magazine.entity.StorageType` |
+| `com.phonepe.magazine.core.StorageType` | `com.phonepe.magazine.entity.StorageType` |
 | `com.phonepe.magazine.common.Constants` | `com.phonepe.magazine.impl.aerospike.common.AerospikeConstants` |
 | `com.phonepe.magazine.util.ErrorMessage` | `com.phonepe.magazine.impl.aerospike.common.ErrorMessage` |
 
@@ -43,6 +44,12 @@ The `common`, `scope` and `util` packages are gone. Update imports:
 | `MagazineData.createAerospikeKey()` | None. Key construction moved into the backend, which needs the `MagazineContext`. |
 | `ErrorCode.ACTION_DENIED_PARALLEL_ATTEMPT` | None. Concurrent duplicate loads now return `true` like any other suppressed duplicate. |
 | `AerospikeStorageConfig.maxFireContentionAttempts` | None. Contention was eliminated, not tuned. |
+| `CommonUtils.resolveLockLevel()` | None. It returned a DLM `LockLevel`, and the DLM is gone. |
+| `CommonUtils.validateMagazineScope()` | None. `BaseMagazineStorage` validates scope at construction. |
+| `CommonUtils` set-name resolution | `AerospikeNaming.resolveSetName(...)`, which is internal. The storage resolves set names itself. |
+| `AerospikeRetryerFactory` | None. Retrying is internal to the Aerospike backend. |
+
+`MagazineScope.Visitor` is unchanged and still supported.
 
 ## 4. Storage SPI changed
 
@@ -119,9 +126,9 @@ classpath. Declare it directly if you depended on it transitively.
 ## Checklist
 
 1. Change the artifact to `magazine-core`.
-2. Fix `scope`, `common` and `util` imports.
-3. Remove references to `StorageTypeVisitor`, `createAerospikeKey()`,
-   `ACTION_DENIED_PARALLEL_ATTEMPT` and `maxFireContentionAttempts`.
+2. Fix `scope`, `common` and `util` imports, and `core.StorageType`.
+3. Remove references to `StorageTypeVisitor`, `CommonUtils`, `AerospikeRetryerFactory`,
+   `createAerospikeKey()`, `ACTION_DENIED_PARALLEL_ATTEMPT` and `maxFireContentionAttempts`.
 4. Handle `RETRIES_EXHAUSTED` separately from `NOTHING_TO_FIRE`.
 5. Register auth for peek, or accept it returning 403.
 6. Update anything parsing the dashboard JSON for numbers-as-strings.

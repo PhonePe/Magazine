@@ -116,8 +116,9 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
             MetaData metaData = collectMetaData(magazine.getMetaData());
             assertEquals(records, metaData.getFirePointer());
             assertEquals(records, metaData.getFireCounter());
-            // Losing the pointer claim must back off, not spin. Without a wait strategy this
-            // still passes but hammers the server; the bound keeps that regression visible.
+            // A claim cannot be lost - every caller increments rather than compare-and-swapping
+            // an expected value - so this should finish in well under a second. The generous bound
+            // exists to catch a regression that reintroduced spinning, not to measure latency.
             assertTrue(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt) < 30);
         } finally {
             executor.shutdownNow();

@@ -30,7 +30,7 @@ flowchart TD
 | **Lock-free dequeue** | A guarded atomic increment claims the fire pointer, so round trips per dequeue do not scale with consumer count |
 | **Sharding** | Per-magazine shard count, persisted and authoritative |
 | **De-duplication** | Optional, via a single create-only write — no distributed lock |
-| **Metrics** | Optional [Micrometer instrumentation](docs/docs/concepts/metrics.md), including round-trip counts |
+| **Metrics** | [Micrometer instrumentation](docs/docs/concepts/metrics.md) on by default, published to the global registry — including round-trip counts |
 | **Storage abstraction** | Aerospike implementation with an extensible storage contract |
 | **Magazine Manager** | Orchestrate multiple heterogeneous magazines |
 | **Dropwizard dashboard** | Optional read-only metadata and bounded peek UI |
