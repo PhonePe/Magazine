@@ -1,228 +1,163 @@
 # Aerospike Backend
 
-Use `AerospikeStorage` when your workload needs low-latency, distributed queue operations backed by Aerospike's in-memory key-value store.
+`AerospikeStorage` is the only backend shipped today. It stores payloads and per-shard pointers as
+plain Aerospike records and relies on atomic bin operations rather than locks.
 
 ## Configuration
 
 ```java
 AerospikeStorageConfig config = AerospikeStorageConfig.builder()
-        .namespace("test")                  // Aerospike namespace
-        .dataSetName("magazine_data")       // set name for data records
-        .metaSetName("magazine_meta")       // set name for metadata records
-        .shards(64)                         // number of shards
-        .recordTtl(30 * 24 * 60 * 60)      // data TTL (30 days)
-        .metaDataTtl(2 * 30 * 24 * 60 * 60) // metadata TTL (60 days)
+        .namespace("test")
+        .dataSetName("magazine_data")
+        .metaSetName("magazine_meta")
+        .shards(8)                          // creation default only
+        .recordTtl(30 * 24 * 60 * 60)       // 30 days
+        .metaDataTtl(2 * 30 * 24 * 60 * 60) // 60 days, must exceed recordTtl
         .build();
 
 AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
-        .aerospikeClient(aerospikeClient)   // IAerospikeClient instance
+        .aerospikeClient(aerospikeClient)
         .storageConfig(config)
-        .enableDeDupe(true)                 // enable de-duplication
-        .farmId("dc1")                      // data centre identifier
-        .clazz(String.class)                // data type class
-        .clientId("my-service")             // owning service
-        .scope(MagazineScope.LOCAL)         // LOCAL or GLOBAL
+        .enableDeDupe(true)
+        .farmId("dc1")
+        .clazz(String.class)
+        .clientId("my-service")
+        .scope(MagazineScope.LOCAL)
         .build();
 ```
 
+### Builder parameters
+
 | Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `aerospikeClient` | `IAerospikeClient` | *(required)* | An already-connected Aerospike client. The library does **not** manage the client lifecycle. |
-| `namespace` | `String` | *(required)* | Aerospike namespace. Must already exist on the cluster. |
-| `dataSetName` | `String` | *(required)* | Set name for data records. Resolved as `{farmId}_{dataSetName}` for `LOCAL` scope. |
-| `metaSetName` | `String` | *(required)* | Set name for metadata records. Resolved as `{farmId}_{metaSetName}` for `LOCAL` scope. |
-| `shards` | `int` | `64` | Number of shards in the magazine. |
-| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. Must be positive. |
-| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. Must be greater than `recordTtl`. |
-| `enableDeDupe` | `boolean` | `false` | Enable distributed de-duplication on writes. |
-| `farmId` | `String` | *(required)* | Data centre / farm identifier. |
-| `clazz` | `Class<T>` | *(required)* | The data type class for casting on read. |
-| `clientId` | `String` | *(required)* | Owning service identifier. |
-| `scope` | `MagazineScope` | *(required)* | `LOCAL` or `GLOBAL`. |
+|---|---|---|---|
+| `aerospikeClient` | `IAerospikeClient` | *required* | Already connected. Magazine does **not** manage its lifecycle. |
+| `storageConfig` | `AerospikeStorageConfig` | *required* | See [defaults](../concepts/defaults.md). |
+| `clazz` | `Class<T>` | *required* | Payload type, used to cast on read. |
+| `farmId` | `String` | *required* | Data centre identifier; prefixes set names under `LOCAL` scope. |
+| `clientId` | `String` | *required* | Owning service; names the deduplication set. |
+| `scope` | `MagazineScope` | *required* | `LOCAL`. `GLOBAL` throws `NOT_IMPLEMENTED` at construction. |
+| `enableDeDupe` | `boolean` | `false` | Only `String`, `Long`, `Integer` payloads. |
+| `meterRegistry` | `MeterRegistry` | Micrometer's global registry | Only needed to isolate a storage from the global registry. See [metrics](../concepts/metrics.md). |
 
-## How It Works
+Config fields and their defaults are documented in [Defaults](../concepts/defaults.md).
 
-### Initialization
+## Record layout
 
-When a `Magazine` is constructed with `AerospikeStorage`, the constructor validates shard configuration:
+| Record | Key | Bins |
+|---|---|---|
+| Shard configuration | `<magazine>_SHARDS` | `SHARDS`, `META_VERSION`, `CREATED_AT` |
+| Metadata (unified) | `<magazine>_SHARD_<n>_METADATA` | `LOAD_POINTER`, `FIRE_POINTER`, `LOAD_COUNTER`, `FIRE_COUNTER` |
+| Metadata (legacy) | `<magazine>_SHARD_<n>_POINTERS` and `..._COUNTERS` | pointers / counters split across two records |
+| Data | `<magazine>_SHARD_<n>_<pointer>` | `data` |
+| Dedupe marker | `<magazine><payload>` in `<clientId>_deduper` | `modified_at` |
 
-1. Reads the existing shard metadata record from Aerospike.
-2. If no record exists, writes the configured shard count with a 1-year TTL.
-3. If a record exists, validates:
-    - Cannot **decrease** shard count.
-    - Cannot **convert** unsharded (≤ 1) to sharded (> 1).
+Unsharded magazines (`shards <= 1`) omit the `SHARD_<n>` fragment entirely. That is why an
+unsharded magazine holding undelivered records can never be promoted to sharded — the flat keys
+would become unreachable.
 
-### Load Operation
+## Initialisation
 
-```mermaid
-flowchart TD
-    A["load(data)"] --> B{"deDupe enabled?"}
-    B -->|Yes| C["Acquire distributed lock"]
-    C --> D{"Already exists?"}
-    D -->|Yes| E["Return true (no-op)"]
-    D -->|No| F["Select random shard"]
-    B -->|No| F
-    F --> G["Increment load pointer (atomic)"]
-    G --> H["Write data record"]
-    H --> I["Increment load counter"]
-    I --> J{"deDupe enabled?"}
-    J -->|Yes| K["Store dedup marker"]
-    K --> L["Release lock"]
-    J -->|No| L
-    L --> M["Return true"]
-```
+On construction each `Magazine` resolves its persisted configuration once, into an immutable
+context that is passed to every subsequent call. A storage instance holds no per-magazine state and
+can serve many magazines.
 
-1. If de-duplication is enabled, a distributed lock is acquired via `DistributedLockManager`.
-2. If the data already exists (checked via a deduper set), returns `true` without writing.
-3. A random shard is selected.
-4. The load pointer for that shard is atomically incremented (`Operation.add`).
-5. The data is written to the data set with the constructed key.
-6. The load counter is atomically incremented.
-7. If de-duplication is enabled, a dedup marker is stored.
-8. The lock is released in the `finally` block.
+1. Read `<magazine>_SHARDS`.
+2. If absent, create it with `CREATE_ONLY` at `META_VERSION=2` and a 5-year TTL. A concurrent
+   creator is resolved by re-reading.
+3. If present, reconcile the configured shard count against the persisted one. **The persisted
+   count wins** unless `allowShardIncrease` is set — see [Defaults](../concepts/defaults.md).
+4. `META_VERSION=0` (or absent) selects the legacy split layout; `2` selects unified.
 
-### Fire Operation
+## Load
 
-```mermaid
-flowchart TD
-    A["fire()"] --> B["Get active shards (from cache)"]
-    B --> BA{"Any active shards?"}
-    BA -->|No| BB["Throw NOTHING_TO_FIRE"]
-    BA -->|Yes| C["Select random active shard"]
-    C --> D["Read pointers for shard"]
-    D --> E{"firePointer < loadPointer?"}
-    E -->|No| F["Retry (select another shard)"]
-    F --> B
-    E -->|Yes| G["Increment fire pointer (atomic)"]
-    G --> H["Read data record"]
-    H --> I{"Record non-null?"}
-    I -->|No| F
-    I -->|Yes| J["Increment fire counter"]
-    J --> K["Return MagazineData"]
-```
+1. If deduplication is on, claim the marker with a `CREATE_ONLY` write. `KEY_EXISTS_ERROR` means
+   the payload was already loaded — return `true` without writing.
+2. Pick a random shard and atomically increment `LOAD_POINTER`, taking the value it returns.
+3. Write the payload at that pointer.
+4. Increment `LOAD_COUNTER`.
 
-1. Active shards are fetched from a Caffeine cache (refreshed every 5 seconds).
-2. A random active shard is selected.
-3. If `firePointer < loadPointer`, the fire pointer is incremented and the data record is read.
-4. If the record is null (e.g. expired), the retryer retries with another shard.
-5. The fire retryer runs **indefinitely** until a non-null result is found or a `NOTHING_TO_FIRE` exception is thrown.
+Three round trips, or four with deduplication. The counter is published *after* the write, which is
+what makes holes detectable: a failed step 3 leaves `LOAD_POINTER` ahead of `LOAD_COUNTER`.
 
-!!! info "Fire retry behaviour"
-    The fire retryer uses `StopStrategies.neverStop()`, but only retries when active shards exist and the record read returns null (e.g. data expired). If there are no active shards, `getActiveShards()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately — no retry occurs.
+If the load does not complete, the deduplication marker is withdrawn so a retry is not suppressed
+until the TTL elapses.
 
-### Reload Operation
+## Fire
 
-Similar to `load()`, but decrements the fire counter instead of incrementing the load counter.
+1. Pick a random shard from the cached active set.
+2. Atomically increment `FIRE_POINTER`, guarded by a filter asserting
+   `FIRE_POINTER < LOAD_POINTER`, and read back the value produced.
+3. Read the payload at that pointer.
+4. Increment `FIRE_COUNTER`.
 
-### Delete Operation
+Three round trips, **regardless of how many consumers are running**. Because every caller
+increments rather than compare-and-swapping an expected value, concurrent consumers receive
+distinct pointers and a claim can never be lost. There is no contention budget and no backoff.
 
-Deletes the data record using the Aerospike key constructed from `MagazineData.createAerospikeKey()`.
+A filtered-out claim means the shard is drained; it is pruned from the cached active set, and once
+every shard is pruned `fire()` raises `NOTHING_TO_FIRE`.
 
-### Peek Operation
+If step 3 finds nothing, the slot is a **hole** — its write had failed. `fire()` skips it and
+continues, up to `maxFireHoleSkips`.
 
-Batch-reads records for the specified shard/pointer combinations without modifying any counters or pointers.
+The claim is never retried. See [delivery semantics](../concepts/delivery-semantics.md).
 
-## Key Structure
+### Active shard discovery
 
-### Data Records
+Which shards hold data is cached per magazine and refreshed every `activeShardRefreshSeconds`
+(default 5) on access, so idle magazines cost nothing. Each refresh is one batch read across every
+shard.
+
+A shard counts as active only when **both** ledgers agree:
 
 ```
-Key:  {magazineId}_SHARD_{shardIndex}_{pointer}    (sharded)
-Key:  {magazineId}_{pointer}                        (unsharded)
-Set:  {farmId}_{dataSetName}                        (LOCAL scope)
+LOAD_POINTER > FIRE_POINTER   and   LOAD_COUNTER > FIRE_COUNTER
 ```
 
-**Bins:**
+Both clauses are required and it is not redundant. The pointer clause answers *"are there
+unconsumed slots?"*; the counter clause answers *"does any of them hold real data?"*. They diverge
+by exactly the number of holes. Without the counter clause, `fire()` would burn its hole-skip
+budget on shards containing nothing but failed writes.
 
-| Bin | Type | Content |
-|-----|------|---------|
-| `data` | varies | The stored payload. |
-| `modified_at` | `Long` | Timestamp of last modification (epoch millis). |
+The ledger is safe because `FIRE_COUNTER` can never over-count — it advances only after a payload
+was actually read, so a crash leaves it short, which keeps the shard active and fails open.
 
-### Metadata Records — Pointers
+## Metadata schema versions
 
-```
-Key:  {magazineId}_SHARD_{shardIndex}_POINTERS
-Set:  {farmId}_{metaSetName}
-```
+`META_VERSION=2` keeps pointers and counters in one record; `0` splits them. Both are supported and
+**there is no migration** — magazines are expected to be short-lived, so legacy ones simply drain
+and disappear.
 
-| Bin | Type | Content |
-|-----|------|---------|
-| `LOAD_POINTER` | `Long` | Current load position for the shard. |
-| `FIRE_POINTER` | `Long` | Current fire position for the shard. |
+Legacy magazines cost one extra batch read per active-shard refresh and per metadata read, because
+counters live in a separate record.
 
-### Metadata Records — Counters
+!!! note "Legacy accounting"
+    Under either schema, a crash between claiming the pointer and advancing `FIRE_COUNTER` leaves
+    the counter short. That only inflates the `pending` figure on the dashboard; it cannot strand
+    data. It resolves as the magazine drains.
 
-```
-Key:  {magazineId}_SHARD_{shardIndex}_COUNTERS
-Set:  {farmId}_{metaSetName}
-```
+## Error mapping
 
-| Bin | Type | Content |
-|-----|------|---------|
-| `LOAD_COUNTER` | `Long` | Total successful loads for the shard. |
-| `FIRE_COUNTER` | `Long` | Total successful fires for the shard. |
+| Cause | `ErrorCode` |
+|---|---|
+| All retries failed on a storage call | `RETRIES_EXHAUSTED` |
+| Hole-skip budget spent | `RETRIES_EXHAUSTED` |
+| Thread interrupted (flag restored) | `RETRIES_EXHAUSTED` |
+| Metadata record missing | `MAGAZINE_UNPREPARED` |
+| Every shard drained | `NOTHING_TO_FIRE` |
+| Non-retryable storage failure | `CONNECTION_ERROR` |
+| Payload type mismatch | `DATA_TYPE_MISMATCH` |
+| Shard layout change refused | `INVALID_SHARDS` |
 
-### Shard Metadata
+## Operational notes
 
-```
-Key:  {magazineId}_SHARDS
-Set:  {farmId}_{metaSetName}
-```
-
-| Bin | Type | Content |
-|-----|------|---------|
-| `SHARDS` | `Integer` | Configured shard count. TTL: 1 year. |
-
-### Deduper Records
-
-```
-Key:  {magazineId}{data}
-Set:  {farmId}_{clientId}_deduper
-```
-
-| Bin | Type | Content |
-|-----|------|---------|
-| `modified_at` | `Long` | Timestamp of dedup marker creation. |
-
-## Active Shards Cache
-
-A Caffeine `AsyncLoadingCache` maintains the list of active shards (shards where `loadCounter > fireCounter` **and** `loadPointer > firePointer`):
-
-| Setting | Value |
-|---------|-------|
-| Max elements | 1024 |
-| Refresh interval | 5 seconds |
-
-The cache is keyed by `magazineIdentifier` and reloads by calling `getMetaData()`.
-
-## Distributed Lock Manager
-
-When de-duplication is enabled, `AerospikeStorage` creates a `DistributedLockManager` (from the [DLM library](https://github.com/PhonePe/DLM)):
-
-| Setting | Value |
-|---------|-------|
-| Client ID | `"magazine"` |
-| Lock mode | `EXCLUSIVE` |
-| Lock store | `AerospikeStore` (same namespace, set suffix: `magazine_distributed_lock`) |
-| Lock level | `DC` for `LOCAL` scope, `XDC` for `GLOBAL` scope |
-| Lock key | `{magazineIdentifier}_{data.toString()}` |
-
-## Retry Behaviour
-
-| Setting | Standard Operations | Fire Operations |
-|---------|---------------------|-----------------|
-| Retry on | `AerospikeException` | `AerospikeException` or `null` result |
-| Max attempts | 5 | Infinite (never stop) — but exits immediately with `NOTHING_TO_FIRE` if no active shards |
-| Wait between attempts | 10 ms (fixed) | 10 ms (fixed) |
-| Block strategy | Thread sleep | Thread sleep |
-
-## Error Mapping
-
-| Exception Type | Mapped Error Code |
-|----------------|-------------------|
-| `MagazineException` | Propagated as-is |
-| `DLMException` with `LOCK_UNAVAILABLE` | `ACTION_DENIED_PARALLEL_ATTEMPT` |
-| `RetryException` | `RETRIES_EXHAUSTED` |
-| `ExecutionException` | `CONNECTION_ERROR` |
-| All others | `INTERNAL_ERROR` (via `propagate()`) |
+- **Set names.** `LOCAL` scope prefixes data and metadata sets with `farmId`, so two farms sharing a
+  namespace do not collide.
+- **TTLs.** Metadata TTL must exceed record TTL; enforced at construction. A magazine idle for
+  longer than `metaDataTtl` loses its metadata and reports `MAGAZINE_UNPREPARED`.
+- **Client tuning.** Magazine copies your client's default read, write and batch policies once at
+  construction, then reuses them. Configure timeouts and retries on the `IAerospikeClient` you pass
+  in.
+- **Rolling deploys.** Old and new versions can run against the same magazine. Shard counts are
+  never rewritten unless `allowShardIncrease` is set, so a mixed fleet with differing `shards`
+  config converges on the persisted value rather than fighting.

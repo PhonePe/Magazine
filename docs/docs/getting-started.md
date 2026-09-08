@@ -11,14 +11,18 @@
 ```xml
 <dependency>
   <groupId>com.phonepe</groupId>
-  <artifactId>magazine</artifactId>
+  <artifactId>magazine-core</artifactId>
   <version>${magazine.version}</version>
 </dependency>
 ```
 
-Replace `${magazine.version}` with the latest version from [Maven Central](https://central.sonatype.com/artifact/com.phonepe/magazine) or [GitHub Releases](https://github.com/PhonePe/Magazine/releases).
+Replace `${magazine.version}` with the latest version from [Maven Central](https://central.sonatype.com/artifact/com.phonepe/magazine-core) or [GitHub Releases](https://github.com/PhonePe/Magazine/releases).
+
+Magazine 2.0 moves the artifact from `com.phonepe:magazine` to `com.phonepe:magazine-core` **and restructures several Java packages**. Upgrading from 1.x? See [Upgrading to 2.0](upgrading.md).
 
 ## Build Locally
+
+The Maven reactor root is the `com.phonepe:magazine` aggregator POM. It contains `magazine-core` (published as `com.phonepe:magazine-core`) and the optional `magazine-dw-bundle` Dropwizard integration.
 
 ```bash
 git clone https://github.com/PhonePe/Magazine.git
@@ -29,8 +33,11 @@ mvn clean install
 To run the tests (Docker must be running):
 
 ```bash
-mvn clean test
+mvn clean verify
 ```
+
+If Testcontainers cannot find your Docker daemon — common on macOS with Rancher Desktop, Colima or
+Podman — export `DOCKER_HOST` first. See [CONTRIBUTING](https://github.com/PhonePe/Magazine/blob/main/CONTRIBUTING.md).
 
 ## Minimal Example
 
@@ -48,13 +55,13 @@ IAerospikeClient client = new AerospikeClient("localhost", 3000);
 ```java
 import com.phonepe.magazine.impl.aerospike.AerospikeStorage;
 import com.phonepe.magazine.impl.aerospike.AerospikeStorageConfig;
-import com.phonepe.magazine.scope.MagazineScope;
+import com.phonepe.magazine.entity.MagazineScope;
 
 AerospikeStorageConfig config = AerospikeStorageConfig.builder()
         .namespace("test")
         .dataSetName("magazine_data")
         .metaSetName("magazine_meta")
-        .shards(64)
+        .shards(8)
         .recordTtl(30 * 24 * 60 * 60)       // 30 days
         .metaDataTtl(2 * 30 * 24 * 60 * 60)  // 60 days
         .build();
@@ -107,3 +114,4 @@ meta.forEach((shard, m) ->
 - [Usage](usage.md) — examples for all operations.
 - [API Reference](concepts/api-reference.md) — full method documentation.
 - [Storage Backend](backends/aerospike.md) — Aerospike configuration deep-dive.
+- [Dropwizard Bundle](dropwizard-bundle.md) — Dropwizard APIs and read-only operational UI.

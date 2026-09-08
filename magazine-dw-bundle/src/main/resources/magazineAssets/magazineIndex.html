@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magazine Observatory</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div><div class="eyebrow">queue telemetry</div><h1>Magazine Observatory</h1></div>
+  <div id="last-updated" class="last-updated" aria-live="polite">Waiting for metadata</div>
+</header>
+<main>
+  <aside class="panel"><h2>Configured magazines</h2><nav id="magazines"><div class="empty">Loading...</div></nav></aside>
+  <section>
+    <div class="panel" id="metadata" aria-live="polite"><div class="empty">Select a magazine to inspect metadata.</div></div>
+    <div class="panel peek-panel">
+      <h2>Non-consuming peek</h2>
+      <form class="peek" id="peek-form">
+        <label>Shard<input id="peek-shard" type="number" min="0" step="1" value="0" required></label>
+        <label>Pointer<input id="peek-pointer" type="text" inputmode="numeric" pattern="[0-9]+" placeholder="e.g. 35" required></label>
+        <button id="peek" type="submit" disabled>Peek record</button>
+      </form>
+      <div id="result" class="peek-result empty" aria-live="polite">Enter a shard and pointer to inspect one record.</div>
+    </div>
+  </section>
+</main>
+<script>
+  const dashboardPath = window.location.pathname.replace(/\/magazineDashboard\/?$/, '');
+  const api = `${dashboardPath}/magazine/v1/magazines`;
+  let selected = null;
+  let selectionVersion = 0;
+  const esc = value => String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  async function json(url, options) { const response=await fetch(url,options); if(!response.ok) throw new Error(`${response.status} ${await response.text()}`); return response.json(); }
+  const number = value => Number(value).toLocaleString();
+  async function choose(identifier, button) {
+    const version=++selectionVersion; selected=identifier; document.querySelectorAll('nav button').forEach(item=>item.classList.remove('active')); button.classList.add('active'); document.querySelector('#peek').disabled=false; document.querySelector('#result').className='peek-result empty'; document.querySelector('#result').textContent='Enter a shard and pointer to inspect one record.';
+    await refreshMetadata(identifier, version);
+  }
+  async function refreshMetadata(identifier, version) {
+    try { const value=await json(`${api}/${encodeURIComponent(identifier)}/metadata`); if(version===selectionVersion){renderMetadata(value);document.querySelector('#last-updated').textContent=`Updated ${new Date().toLocaleTimeString()} · refreshes every 30s`;} } catch(error) { if(version===selectionVersion)document.querySelector('#metadata').innerHTML=`<pre>${esc(error.message)}</pre>`; }
+  }
+  function renderMetadata(value) {
+    const metric=([label,key])=>`<div class="metric"><strong>${number(value.totals[key])}</strong><span>${label}</span></div>`;
+    const rows=Object.entries(value.shards).map(([shard,data])=>`<tr><td>${esc(shard)}</td><td>${number(data.loadCounter)}</td><td>${number(data.fireCounter)}</td><td>${number(data.loadPointer)}</td><td>${number(data.firePointer)}</td><td>${number(data.pending)}</td></tr>`).join('');
+    document.querySelector('#metadata').innerHTML=`<h2>${esc(value.identifier)}</h2><div class="metrics">${[['load counter','loadCounter'],['fire counter','fireCounter'],['pending','pending']].map(metric).join('')}</div><div class="table-wrap"><table><thead><tr><th>Shard</th><th>Load counter</th><th>Fire counter</th><th>Load pointer</th><th>Fire pointer</th><th>Pending</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function renderPeek(value) {
+    const result=document.querySelector('#result');
+    if (!value.data.length) { result.className='peek-result empty'; result.textContent='No record found at this shard and pointer.'; return; }
+    result.className='peek-result';
+    result.innerHTML=value.data.map(record=>`<article><div><span>Shard</span><strong>${esc(record.shard ?? 0)}</strong></div><div><span>Pointer</span><strong>${number(record.pointer)}</strong></div><div class="type"><span>Type</span><strong>${esc(record.type ?? '-')}</strong></div><div class="payload"><span>Payload</span><code>${esc(typeof record.data === 'string' ? record.data : JSON.stringify(record.data))}</code></div></article>`).join('');
+  }
+  document.querySelector('#peek-form').addEventListener('submit',async event=>{ event.preventDefault(); const result=document.querySelector('#result'); const shard=document.querySelector('#peek-shard').value; const pointer=document.querySelector('#peek-pointer').value; if(!/^\d+$/.test(shard)||!/^\d+$/.test(pointer)||Number(pointer)<1){result.className='peek-result error';result.textContent='Enter a non-negative shard and positive pointer.';return;}
+    if(!Number.isSafeInteger(Number(pointer))){result.className='peek-result error';result.textContent='Pointer is too large to represent exactly in the browser.';return;} try { renderPeek(await json(`${api}/${encodeURIComponent(selected)}/peek`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pointers:{[shard]:[Number(pointer)]}})})); } catch(error) { result.className='peek-result error'; result.textContent=error.message; } });
+  json(api).then(items=>{ const nav=document.querySelector('#magazines'); if(!items.length){nav.innerHTML='<div class="empty">No magazines configured.</div>';return;} nav.innerHTML=''; items.forEach((item,index)=>{const button=document.createElement('button');button.textContent=item.identifier;button.addEventListener('click',()=>choose(item.identifier,button));nav.appendChild(button);if(index===0)choose(item.identifier,button);}); }).catch(error=>document.querySelector('#magazines').innerHTML=`<pre>${esc(error.message)}</pre>`);
+  setInterval(()=>{if(selected)refreshMetadata(selected,selectionVersion);},30000);
+</script>
+</body>
+</html>

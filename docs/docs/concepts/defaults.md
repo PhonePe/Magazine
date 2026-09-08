@@ -1,77 +1,86 @@
-# Defaults & Configuration
-
-This page lists all configurable values and their defaults.
+# Defaults
 
 ## `AerospikeStorageConfig`
 
-Configuration object passed to `AerospikeStorage.builder().storageConfig(...)`.
+| Field | Default | Notes |
+|---|---|---|
+| `namespace` | — | Required. |
+| `dataSetName` | — | Required. Prefixed with the farm ID for `LOCAL` scope. |
+| `metaSetName` | — | Required. Prefixed with the farm ID for `LOCAL` scope. |
+| `recordTtl` | `2592000` (30 days) | Must be positive. |
+| `metaDataTtl` | `5184000` (60 days) | Must be **greater than** `recordTtl`. |
+| `shards` | `8` | Creation default only — see below. |
+| `allowShardIncrease` | `false` | Must be set to widen an existing magazine. |
+| `activeShardRefreshSeconds` | `5` | Primary lever on steady-state read load. |
+| `maxFireHoleSkips` | `512` | Bounds `fire()`; exhausting it raises `RETRIES_EXHAUSTED`. |
+| `metricsEnabled` | `true` | Publishes to Micrometer's global registry unless a `meterRegistry` is set on the builder. |
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `namespace` | `String` | *(required)* | Aerospike namespace. Must already exist on the cluster. |
-| `metaSetName` | `String` | *(required)* | Set name for metadata records (pointers, counters, shard info). |
-| `dataSetName` | `String` | *(required)* | Set name for data records. |
-| `recordTtl` | `int` | `2592000` (30 days) | TTL in seconds for data records. Must be positive. |
-| `metaDataTtl` | `int` | `5184000` (60 days) | TTL in seconds for metadata records. Must be greater than `recordTtl`. |
-| `shards` | `int` | `64` | Number of shards in the magazine. Minimum: `1`. |
+### `metaDataTtl` must outlive `recordTtl`
 
-## `AerospikeStorage` Builder
+Enforced at construction. `fire()` reads the metadata record to locate the next data record, so
+metadata expiring first would make live data unreachable and indistinguishable from an
+uninitialised magazine.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `aerospikeClient` | `IAerospikeClient` | *(required)* | An already-connected Aerospike client. The library does **not** manage the client lifecycle. |
-| `storageConfig` | `AerospikeStorageConfig` | *(required)* | Storage configuration (see above). |
-| `enableDeDupe` | `boolean` | `false` | Enable distributed de-duplication on `load()`. |
-| `farmId` | `String` | *(required)* | Data centre / farm identifier. Used in set name resolution for `LOCAL` scope. |
-| `clazz` | `Class<T>` | *(required)* | The data type class (e.g. `String.class`). Used for casting on read. |
-| `clientId` | `String` | *(required)* | Identifier for the owning service. |
-| `scope` | `MagazineScope` | *(required)* | `LOCAL` or `GLOBAL`. |
+### `shards` is a creation default, not a setting
 
-## Internal Constants
+The **persisted** shard count is authoritative. When a magazine already exists, its stored count is
+adopted and `shards` is ignored — which is what lets one storage instance serve magazines with
+differing shard counts.
 
-These constants are defined in `com.phonepe.magazine.common.Constants` and are **not user-configurable**.
+| Situation | Behaviour |
+|---|---|
+| `shards` == persisted | Used as-is. |
+| `shards` < persisted | Persisted count adopted, logged at INFO. **Not an error** — shards cannot be narrowed. |
+| `shards` > persisted, `allowShardIncrease` false | Persisted count adopted, logged at INFO. |
+| `shards` > persisted, `allowShardIncrease` true | Widened and persisted via a guarded update. |
+| Unsharded (≤1) → sharded, magazine drained | Promoted, logged at WARN. Records under the flat key layout are abandoned and expire with their TTL. |
+| Unsharded (≤1) → sharded, records undelivered | `INVALID_SHARDS`. Flat-layout keys carry no `SHARD_<n>` fragment, so those records would become unreachable. |
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `MAX_RETRIES` | `5` | Maximum retry attempts for Aerospike operations. |
-| `DELAY_BETWEEN_RETRIES` | `10` ms | Fixed wait between retry attempts. |
-| `MIN_SHARDS` | `1` | Minimum accepted shard count. |
-| `SHARDS_DEFAULT_TTL` | `31536000` (1 year) | TTL for the shard metadata record. |
-| `DEFAULT_REFRESH` | `5` | Default cache refresh interval (seconds) for the active shards cache. |
-| `DEFAULT_MAX_ELEMENTS` | `1024` | Maximum elements in the active shards cache. |
-| `DLM_CLIENT_ID` | `"magazine"` | Client ID used for the internal `DistributedLockManager`. |
+Boot never rewrites persisted shard state unless you explicitly opt in.
 
-## Retry Configuration
+### Choosing `shards` and `activeShardRefreshSeconds`
 
-All Aerospike operations are wrapped in a `guava-retrying` retryer:
+Shards spread records across Aerospike partitions and stop any single metadata record becoming a
+hot key. They do **not** reduce fire-pointer contention — the claim is a guarded atomic increment
+and cannot be lost — so a large shard count buys less than it used to.
 
-| Setting | Standard Operations | Fire Operations |
-|---------|---------------------|-----------------|
-| Retry on | `AerospikeException` | `AerospikeException` or `null` result |
-| Max attempts | 5 | ∞ (never stop) — but exits immediately with `NOTHING_TO_FIRE` if no active shards |
-| Wait between attempts | 10 ms (fixed) | 10 ms (fixed) |
-| Block strategy | Thread sleep | Thread sleep |
-
-!!! info "Fire retry behaviour"
-    The fire retryer uses `neverStop`, but this only applies when active shards exist and the selected record is null (e.g. expired data). If there is nothing to fire (no active shards), `fire()` throws `MagazineException` with `NOTHING_TO_FIRE` immediately — it does **not** enter the retry loop.
-
-## Set Name Resolution
-
-When `scope = LOCAL`, set names are prefixed with the `farmId`:
+Every shard widens the active-shard batch read:
 
 ```
-{farmId}_{dataSetName}    → e.g. "dc1_magazine_data"
-{farmId}_{metaSetName}    → e.g. "dc1_magazine_meta"
+discovery load ≈ magazines × shards ÷ activeShardRefreshSeconds   key reads/second
 ```
 
-When `scope = GLOBAL`, set names are used as-is (no prefix).
+That cost is paid only while a magazine is being consumed; idle magazines refresh nothing. The
+default of 8 shards at 5 seconds is ~1.6 key reads/sec per active magazine. Raise `shards` if a
+metadata record becomes hot; raise `activeShardRefreshSeconds` to cut discovery load.
 
-## Shard Constraints
+## Internal constants
 
-On magazine construction, the library validates shard configuration:
+Not user-configurable. Defined in `com.phonepe.magazine.impl.aerospike.common.AerospikeConstants`.
 
-| Rule | Enforcement |
-|------|-------------|
-| Cannot decrease shard count | Throws `MagazineException` with `INVALID_SHARDS` |
-| Cannot convert unsharded (≤ 1) to sharded (> 1) | Throws `MagazineException` with `INVALID_SHARDS` |
-| Minimum shard count | Values below `1` throw `MagazineException` with `INVALID_SHARDS` |
+| Constant | Value | Purpose |
+|---|---|---|
+| `MAX_RETRIES` | `5` | Attempts per storage call for retryable failures. |
+| `AEROSPIKE_RETRY_DELAY_MS` | `10` | Fixed delay between those attempts. |
+| `MAX_FIRE_HOLE_SKIPS` | `512` | Default for `maxFireHoleSkips`. |
+| `DEFAULT_SHARDS` | `8` | Default for `shards`. |
+| `DEFAULT_REFRESH` | `5` | Default for `activeShardRefreshSeconds`. |
+| `DEFAULT_MAX_ELEMENTS` | `1024` | Active-shard cache capacity, in magazines. |
+| `SHARD_CONFIGURATION_TTL_SECONDS` | `157680000` (5 years) | TTL of the per-magazine shard configuration record. |
+| `LEGACY_METADATA_SCHEMA_VERSION` | `0` | Pointers and counters in separate records. |
+| `UNIFIED_METADATA_SCHEMA_VERSION` | `2` | Pointers and counters in one record. Used for all new magazines. |
+
+## Retry behaviour
+
+| Path | Attempts | Delay |
+|---|---|---|
+| Storage reads and writes | 5 | 10 ms fixed |
+| Fire-pointer claim | **1** | — |
+| `fire()` hole skips | up to `maxFireHoleSkips` | none |
+
+The fire-pointer claim is deliberately never retried: it is a non-idempotent `add`, so a retry
+after a timeout could double-advance the pointer and drop a record. See
+[delivery semantics](delivery-semantics.md).
+
+There is **no contention retry budget**. Concurrent consumers receive distinct pointers, so a
+claim cannot be lost to another consumer and there is nothing to back off from.

@@ -2,7 +2,7 @@
 
 ## Core Operations
 
-Every `Magazine<T>` instance exposes six operations:
+Every `Magazine<T>` instance exposes these operations:
 
 | Method | Description |
 |--------|-------------|
@@ -11,7 +11,9 @@ Every `Magazine<T>` instance exposes six operations:
 | `reload(T data)` | Re-enqueue data (decrements fire counter instead of incrementing load counter). |
 | `delete(MagazineData<T>)` | Remove a specific record from the backend. |
 | `getMetaData()` | Retrieve per-shard counters and pointers. |
+| `getShards()` | This magazine's persisted shard count. |
 | `peek(Map<Integer, Set<Long>>)` | Read specific shard/pointer records without consuming. |
+| `getMagazineIdentifier()` | The identifier this magazine is bound to. |
 
 ## Creating a Magazine
 
@@ -22,7 +24,7 @@ AerospikeStorageConfig config = AerospikeStorageConfig.builder()
         .namespace("test")
         .dataSetName("mag_data")
         .metaSetName("mag_meta")
-        .shards(64)
+        .shards(8)
         .recordTtl(30 * 24 * 60 * 60)
         .metaDataTtl(2 * 30 * 24 * 60 * 60)
         .build();
@@ -45,20 +47,23 @@ Magazine<String> magazine = Magazine.<String>builder()
 
 ## Loading Data
 
-Enqueue data into the magazine. Each call atomically increments the load pointer and load counter for the selected shard.
+Enqueue data into the magazine. Each successful call advances the load pointer and, after storing the data, increments the load counter for the selected shard.
 
 ```java
 boolean success = magazine.load("order-12345");
 ```
 
-When de-duplication is enabled, a distributed lock is acquired before writing. If the data already exists, the call returns `true` without writing a duplicate.
+When de-duplication is enabled, the write is issued as a create-only operation. If the data already exists, the call returns `true` without writing a duplicate.
 
 !!! info "De-duplication support"
     De-duplication is supported only for `String`, `Long`, and `Integer` data types.
 
 ## Firing (Consuming) Data
 
-Dequeue the next item. The library randomly selects an active shard and retries until a non-null record is found or all pointers are exhausted.
+Dequeue the next item. The library picks an active shard and claims a slot with a guarded atomic increment of that shard's fire pointer.
+
+!!! danger "`fire()` is at-most-once"
+    The claim is applied server-side before the payload reaches you. If the client times out after the server applied the claim, the pointer has already advanced and that record will **never** be delivered again. Callers that cannot tolerate loss must persist their own idempotency record before acting on the result. See [Delivery Semantics](concepts/delivery-semantics.md).
 
 ```java
 MagazineData<String> fired = magazine.fire();
@@ -69,8 +74,13 @@ Integer shard = fired.getShard();           // shard index
 String magId  = fired.getMagazineIdentifier();
 ```
 
-!!! info "Fire retry behaviour"
-    If there are no active shards (i.e. nothing to fire), `fire()` throws a `MagazineException` with `NOTHING_TO_FIRE` immediately — it does **not** retry. The internal infinite retry (`neverStop`) only kicks in when active shards exist but the selected record is null (e.g. expired). In that case it keeps selecting another shard until a non-null record is found.
+!!! info "Two distinct failure modes"
+    `fire()` throws a `MagazineException` with one of two error codes, and **treating them alike is a bug**:
+
+    - `NOTHING_TO_FIRE` — the magazine is drained. There is nothing to consume; back off and retry later.
+    - `RETRIES_EXHAUSTED` — the library gave up while skipping consecutive pointer holes (slots whose pointer was allocated but whose data write failed), bounded by `maxFireHoleSkips`. This is *not* an empty queue: data may still exist. Alerting on it, rather than silently treating it as "empty", is the correct response.
+
+    The scan is bounded — there is no retry loop over contention, because the claim is a guarded atomic increment and can never be lost. Exhausted shards are suppressed in the process-local active-shard cache, so loads from another instance can take up to `activeShardRefreshSeconds` (default 5) to become visible.
 
 ## Reloading Data
 
@@ -89,6 +99,9 @@ MagazineData<String> fired = magazine.fire();
 // Process the data...
 magazine.delete(fired);
 ```
+
+!!! warning
+    `delete()` throws a `MagazineException` with `INVALID_CONFIGURATION` if the supplied `MagazineData` belongs to a different magazine than the one you call it on. Do not route records returned by one magazine into another's `delete()`.
 
 ## Peeking Data
 
@@ -159,16 +172,11 @@ MagazineData<Long> id = ids.fire();
 ```
 
 !!! note
-    `refresh()` replaces the internal magazine map. Call it whenever your magazine topology changes (e.g. on config reload).
+    `refresh()` atomically replaces the internal magazine map. Call it whenever your magazine topology changes (e.g. on config reload).
 
 ## De-duplication
 
-When `enableDeDupe` is set to `true` on the storage, each `load()` call:
-
-1. Acquires a distributed lock keyed on `{magazineIdentifier}_{data.toString()}`.
-2. Checks whether the data already exists in a deduper set.
-3. Writes the data only if it doesn't already exist.
-4. Stores the data hash for future de-dup checks.
+When `enableDeDupe` is set to `true` on the storage, each `load()` call writes the de-dup marker with a create-only write, so the server — not a client-side lock — resolves concurrent attempts. The data is written only if no marker already exists.
 
 ```java
 AerospikeStorage<String> storage = AerospikeStorage.<String>builder()
@@ -187,16 +195,17 @@ magazine.load("unique-item"); // no-op — already exists
 
 ## Scoping
 
-| Scope | Lock Level | Set Name Resolution | Status |
-|-------|------------|---------------------|--------|
-| `LOCAL` | `DC` (data-centre) | `{farmId}_{setName}` | ✅ Supported |
-| `GLOBAL` | `XDC` (cross-DC) | `{setName}` (no prefix) | ❌ Not yet implemented |
+| Scope | Reach | Set Name Resolution | Status |
+|-------|-------|---------------------|--------|
+| `LOCAL` | Single data-centre | `{farmId}_{setName}` | ✅ Supported |
+| `GLOBAL` | Cross-DC | `{setName}` (no prefix) | ❌ Not yet implemented |
 
 ```java
 // Local scope (recommended)
 .scope(MagazineScope.LOCAL)
 
-// Global scope (throws NOT_IMPLEMENTED at runtime)
+// Global scope — rejected with NOT_IMPLEMENTED while the storage is
+// being constructed, so the application fails at boot.
 .scope(MagazineScope.GLOBAL)
 ```
 

@@ -2,7 +2,7 @@
 
 > A distributed persistent queue for homogeneous data management in Java.
 
-[![Maven Central](https://img.shields.io/maven-central/v/com.phonepe/magazine.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22com.phonepe%22%20AND%20a:%22magazine%22)
+[![Maven Central](https://img.shields.io/maven-central/v/com.phonepe/magazine-core.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/com.phonepe/magazine-core)
 [![Build](https://github.com/PhonePe/Magazine/actions/workflows/maven.yml/badge.svg)](https://github.com/PhonePe/Magazine/actions/workflows/maven.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/Java-17%2B-blue)](https://openjdk.org/projects/jdk/17/)
@@ -26,10 +26,24 @@ flowchart TD
 | Feature | Description |
 |---|---|
 | **Load / Fire / Reload** | Queue-like semantics with pointer-based reads |
-| **Sharding** | Configurable shard count for horizontal throughput |
-| **De-duplication** | Optional distributed lock-based de-dup on write |
+| **At-most-once delivery** | A record is claimed by exactly one consumer — [and can be lost on timeout](docs/docs/concepts/delivery-semantics.md) |
+| **Lock-free dequeue** | A guarded atomic increment claims the fire pointer, so round trips per dequeue do not scale with consumer count |
+| **Sharding** | Per-magazine shard count, persisted and authoritative |
+| **De-duplication** | Optional, via a single create-only write — no distributed lock |
+| **Metrics** | [Micrometer instrumentation](docs/docs/concepts/metrics.md) on by default, published to the global registry — including round-trip counts |
 | **Storage abstraction** | Aerospike implementation with an extensible storage contract |
 | **Magazine Manager** | Orchestrate multiple heterogeneous magazines |
+| **Dropwizard dashboard** | Optional read-only metadata and bounded peek UI |
+
+## Modules
+
+| Module | Artifact | Purpose |
+|---|---|---|
+| Root reactor | `com.phonepe:magazine` | Aggregator POM for the Magazine 2.x modules |
+| `magazine-core` | `com.phonepe:magazine-core` | Magazine API and Aerospike storage implementation |
+| `magazine-dw-bundle` | `com.phonepe:magazine-dw-bundle` | Extensible Dropwizard 5 integration, read APIs, and dashboard |
+
+Magazine 2.0 is a **breaking release**: the library JAR moves from `com.phonepe:magazine` to `com.phonepe:magazine-core`, and several Java packages were restructured. See [Upgrading to 2.0](docs/docs/upgrading.md) for the full list.
 
 ## Quick Start
 
@@ -40,15 +54,15 @@ flowchart TD
 ```xml
 <dependency>
     <groupId>com.phonepe</groupId>
-    <artifactId>magazine</artifactId>
-    <version>1.0.0</version>
+    <artifactId>magazine-core</artifactId>
+    <version>2.0.0</version>
 </dependency>
 ```
 
 **Gradle**
 
 ```groovy
-implementation 'com.phonepe:magazine:1.0.0'
+implementation 'com.phonepe:magazine-core:2.0.0'
 ```
 
 ### 2. Create a Magazine (Aerospike Backend)
@@ -57,7 +71,7 @@ implementation 'com.phonepe:magazine:1.0.0'
 import com.aerospike.client.AerospikeClient;
 import com.phonepe.magazine.*;
 import com.phonepe.magazine.impl.aerospike.*;
-import com.phonepe.magazine.scope.MagazineScope;
+import com.phonepe.magazine.entity.MagazineScope;
 
 // Connect to Aerospike
 IAerospikeClient client = new AerospikeClient("localhost", 3000);
@@ -67,7 +81,7 @@ AerospikeStorageConfig config = AerospikeStorageConfig.builder()
         .namespace("test")
         .dataSetName("magazine_data")
         .metaSetName("magazine_meta")
-        .shards(64)
+        .shards(8)
         .recordTtl(30 * 24 * 60 * 60)      // 30 days
         .metaDataTtl(2 * 30 * 24 * 60 * 60) // 60 days
         .build();
@@ -125,6 +139,33 @@ Magazine<String> m = manager.getMagazine("notifications");
 m.fire();
 ```
 
+## Dropwizard Dashboard
+
+Add `com.phonepe:magazine-dw-bundle` at the same version and see the [Dropwizard bundle guide](docs/docs/dropwizard-bundle.md) for complete registration and configuration. Registering the bundle always enables its APIs; the dashboard assets can be disabled separately. Its current HTTP surface is:
+
+- `GET /magazineDashboard/` for the static dashboard assets
+- `GET /magazine/v1/magazines`
+- `GET /magazine/v1/magazines/{identifier}/metadata`
+- `POST /magazine/v1/magazines/{identifier}/peek`
+
+There are no HTTP routes for `load`, `reload`, `fire`, or deletion. Peek performs only storage reads and does not advance pointers or counters.
+
+Because peek returns full payloads it is guarded by `@RolesAllowed("magazine_peek")` and is **closed by default**: with no `SecurityContext` populated the role check fails and the request is rejected. Register your own authentication and grant the role to enable it. Listing and metadata expose counters only and are unauthenticated. Protect the dashboard namespace with your application's authentication and network policy regardless.
+
+The dashboard displays load/fire counters and pointers separately and refreshes metadata every 30 seconds. Peek requests are capped at 1,000 pointers by the bundle.
+
+### Run The Dashboard Locally
+
+Start the test-only demo application without Aerospike or Docker:
+
+```bash
+mvn -pl magazine-dw-bundle -am -Pdashboard-demo test-compile
+```
+
+Open [http://localhost:8080/magazineDashboard/](http://localhost:8080/magazineDashboard/). Stop it with `Ctrl+C`. The demo is compiled from `src/test` and is not included in the published bundle JAR.
+
+For peek, try shard `0` pointers `35` and `36` on `email-jobs`, or pointers `50` and `51` on `payment-retries`.
+
 ## API Overview
 
 | Class | Method | Description |
@@ -147,6 +188,7 @@ Full documentation is available in the [`docs/`](docs/) directory:
 - [API Reference](docs/docs/concepts/api-reference.md)
 - [Defaults & Configuration](docs/docs/concepts/defaults.md)
 - [Error Codes](docs/docs/concepts/error-codes.md)
+- [Dropwizard Bundle](docs/docs/dropwizard-bundle.md)
 - **Backend:** [Aerospike](docs/docs/backends/aerospike.md)
 
 ## Architecture

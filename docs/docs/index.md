@@ -17,9 +17,11 @@ Inspired by the mechanics of a rifle magazine, the library offers an intuitive A
 ## Key Features
 
 - **Storage abstraction** — Aerospike is currently supported, and the storage contract can be extended with additional implementations.
-- **Horizontal scaling via sharding** — configurable shard count (default: 64).
-- **Distributed locking** — prevents concurrent duplicate writes when de-duplication is enabled.
-- **Automatic retries** — configurable retry policy for transient backend failures.
+- **Horizontal scaling via sharding** — configurable shard count (default: 8).
+- **Lock-free de-duplication** — concurrent duplicate writes are resolved server-side by a create-only write, not a distributed lock.
+- **At-most-once delivery** — a record is claimed by a guarded atomic increment; see [Delivery Semantics](concepts/delivery-semantics.md).
+- **Bounded retries** — transient backend failures are retried a fixed number of times (5, not user configurable).
+- **Micrometer metrics** — load, fire and peek are instrumented out of the box, published to the global registry; see [Metrics](concepts/metrics.md).
 - **Peek without consuming** — inspect specific shards and pointers without modifying state.
 - **Magazine Manager** — orchestrate heterogeneous magazine types in one place.
 
@@ -38,13 +40,13 @@ sequenceDiagram
 
     App->>Mag: load("order-123")
     Mag->>Store: load("orders", "order-123")
-    Store->>AS: acquireLock, incrementLoadPointer, put(data), incrementLoadCounter
+    Store->>AS: incrementLoadPointer, put(data, CREATE_ONLY when de-duping), incrementLoadCounter
     AS-->>Store: success
     Store-->>Mag: true
 
     App->>Mag: fire()
-    Mag->>Store: fire("orders")
-    Store->>AS: selectShard, readPointers, incrementFirePointer, get(data)
+    Mag->>Store: fire(context)
+    Store->>AS: selectActiveShard, claimFirePointer (guarded atomic increment), get(data), incrementFireCounter
     AS-->>Store: MagazineData‹String›
     Store-->>Mag: MagazineData‹String›
     Mag-->>App: MagazineData‹String›
@@ -93,9 +95,10 @@ graph TD
 | Component | Role |
 |-----------|------|
 | **`MagazineManager`** | Facade for managing multiple `Magazine` instances by identifier. |
-| **`Magazine<T>`** | Type-safe wrapper providing `load`, `fire`, `reload`, `delete`, `peek`, `getMetaData`. |
-| **`BaseMagazineStorage<T>`** | Abstract storage contract; implemented by each backend. |
-| **`AerospikeStorage<T>`** | Production-ready Aerospike backend with sharding, retries, and distributed locks. |
+| **`Magazine<T>`** | Type-safe wrapper providing `load`, `fire`, `reload`, `delete`, `peek`, `getMetaData`, `getShards`. |
+| **`BaseMagazineStorage<T>`** | Abstract storage contract; implemented by each backend. `initialize(String)` resolves a `MagazineContext`. |
+| **`MagazineContext`** | Immutable per-magazine resolved configuration (identifier, schema version, shard count) threaded through every storage call. |
+| **`AerospikeStorage<T>`** | Production-ready Aerospike backend with sharding, bounded retries, and lock-free de-duplication. |
 | **`MagazineData<T>`** | Envelope carrying the data payload, fire pointer, shard, and magazine identifier. |
 | **`MetaData`** | Per-shard counters (`loadCounter`, `fireCounter`) and pointers (`loadPointer`, `firePointer`). |
 
@@ -103,5 +106,8 @@ graph TD
 
 - [Getting Started](getting-started.md) — dependency setup, prerequisites, building locally.
 - [Usage](usage.md) — complete examples for every operation.
+- [Delivery Semantics](concepts/delivery-semantics.md) — what at-most-once means, and how to build on it safely.
+- [Metrics](concepts/metrics.md) — Micrometer instrumentation and what to alert on.
 - [Concepts](concepts/api-reference.md) — API reference, defaults, error codes.
 - [Storage Backend](backends/aerospike.md) — Aerospike configuration and internals.
+- [Upgrading](upgrading.md) — migrating to 2.0.0.

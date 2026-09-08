@@ -1,16 +1,28 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<project child.project.url.inherit.append.path="false"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>magazine</artifactId>
     <groupId>com.phonepe</groupId>
-    <version>1.0.0-SNAPSHOT</version>
+    <artifactId>magazine</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
-    <url>https://github.com/PhonePe/magazine</url>
-    <description>Distributed Persistent Queue</description>
-    <inceptionYear>2025</inceptionYear>
     <name>Magazine</name>
+    <description>Distributed Persistent Queue</description>
+    <url>https://github.com/PhonePe/Magazine</url>
+    <inceptionYear>2025</inceptionYear>
 
-    <scm>
+    <modules>
+        <module>magazine-core</module>
+        <module>magazine-dw-bundle</module>
+    </modules>
+
+    <scm child.scm.connection.inherit.append.path="false"
+         child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
         <connection>scm:git:https://github.com/PhonePe/Magazine.git</connection>
         <developerConnection>scm:git:https://github.com/PhonePe/Magazine.git</developerConnection>
         <tag>HEAD</tag>
@@ -20,9 +32,8 @@
     <licenses>
         <license>
             <name>The Apache Software License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
             <distribution>repo</distribution>
-            <comments>A business-friendly OSS license</comments>
         </license>
     </licenses>
 
@@ -68,160 +79,130 @@
         <url>https://github.com/PhonePe/Magazine/issues</url>
     </issueManagement>
 
-    <ciManagement>
-        <system>Travis CI</system>
-        <url>https://travis-ci.org/PhonePe/magazine</url>
-    </ciManagement>
-
-    <distributionManagement>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-        <repository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
-    </distributionManagement>
-
     <properties>
-        <!--        Java related properties -->
-        <jdk.source.version>17</jdk.source.version>
-        <jdk.target.version>17</jdk.target.version>
-        <jdk.release.version>17</jdk.release.version>
-        <!--        Maven related properties -->
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
         <maven.compiler.plugin.version>3.9.0</maven.compiler.plugin.version>
-        <jacoco.maven.plugin.version>0.8.7</jacoco.maven.plugin.version>
+        <maven.surefire.plugin.version>3.5.2</maven.surefire.plugin.version>
         <maven.source.plugin.version>3.2.0</maven.source.plugin.version>
-        <maven.sonar.plugin.version>3.9.1.2184</maven.sonar.plugin.version>
         <maven.javadoc.plugin.version>3.3.1</maven.javadoc.plugin.version>
-        <maven.surefire.plugin.version>3.0.0-M8</maven.surefire.plugin.version>
-        <sonatype.central.publishing.maven.plugin.version>0.5.0</sonatype.central.publishing.maven.plugin.version>
-        <maven.release.plugin.version>2.5.3</maven.release.plugin.version>
-        <maven.javadoc.skip>false</maven.javadoc.skip>
-        <maven.deploy.skip>false</maven.deploy.skip>
-        <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
+        <jacoco.maven.plugin.version>0.8.13</jacoco.maven.plugin.version>
+        <maven.sonar.plugin.version>5.7.0.6970</maven.sonar.plugin.version>
+        <sonatype.central.publishing.maven.plugin.version>0.11.0</sonatype.central.publishing.maven.plugin.version>
+        <maven.gpg.plugin.version>3.2.7</maven.gpg.plugin.version>
+        <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+        <maven.clean.plugin.version>3.4.0</maven.clean.plugin.version>
+        <maven.install.plugin.version>3.1.3</maven.install.plugin.version>
+        <maven.deploy.plugin.version>3.1.3</maven.deploy.plugin.version>
+        <maven.site.plugin.version>3.21.0</maven.site.plugin.version>
+        <maven.resources.plugin.version>3.3.1</maven.resources.plugin.version>
+        <maven.jar.plugin.version>3.4.2</maven.jar.plugin.version>
+        <license.maven.plugin.version>4.6</license.maven.plugin.version>
+        <exec.maven.plugin.version>3.5.1</exec.maven.plugin.version>
+        <lombok.maven.version>1.18.20.0</lombok.maven.version>
 
         <lombok.version>1.18.46</lombok.version>
         <mockito.version>4.3.1</mockito.version>
-        <apache.commons.version>3.20.0</apache.commons.version>
-        <guava.retrying.version>2.0.0</guava.retrying.version>
-        <guava.version>33.7.1-jre</guava.version>
-        <slf4j.version>1.7.36</slf4j.version>
-        <junit.version>4.13.2</junit.version>
-        <DLM.version>1.0.2</DLM.version>
-        <caffeine.version>2.9.3</caffeine.version>
+        <slf4j.version>2.0.18</slf4j.version>
+        <junit.jupiter.version>5.14.4</junit.jupiter.version>
+        <caffeine.version>3.2.4</caffeine.version>
+        <micrometer.version>1.14.4</micrometer.version>
         <aerospike.version>6.3.1</aerospike.version>
-        <testcontainer.version>1.16.2</testcontainer.version>
-        <junit.testcontainer.version>1.0.10</junit.testcontainer.version>
-        <lombok.maven.version>1.18.20.0</lombok.maven.version>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <archunit.version>1.4.1</archunit.version>
+        <testcontainer.version>2.0.5</testcontainer.version>
+        <dropwizard.version>5.0.2</dropwizard.version>
+        <awaitility.version>4.2.2</awaitility.version>
 
-        <!-- Sonar properties -->
+        <license.year>2025</license.year>
+
+        <maven.javadoc.skip>false</maven.javadoc.skip>
+        <maven.deploy.skip>false</maven.deploy.skip>
+
         <sonar.projectKey>PhonePe_Magazine</sonar.projectKey>
         <sonar.organization>phonepe</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-        <sonar.sources>src/main</sonar.sources>
-        <sonar.tests>src/test</sonar.tests>
         <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
-        <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
-        <sonar.language>java</sonar.language>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
         <sonar.exclusions>**/exception/*.java</sonar.exclusions>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${maven.multiModuleProjectDirectory}/magazine-coverage/target/site/jacoco-aggregate/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>${lombok.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.aerospike</groupId>
-            <artifactId>aerospike-client</artifactId>
-            <version>${aerospike.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>${apache.commons.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.rholder</groupId>
-            <artifactId>guava-retrying</artifactId>
-            <version>${guava.retrying.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>${guava.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.ben-manes.caffeine</groupId>
-            <artifactId>caffeine</artifactId>
-            <version>${caffeine.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.phonepe</groupId>
-            <artifactId>DLM</artifactId>
-            <version>${DLM.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>testcontainers</artifactId>
-            <version>${testcontainer.version}</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>junit</groupId>
-                    <artifactId>junit</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>io.appform.testcontainer</groupId>
-            <artifactId>junit-testcontainer-aerospike</artifactId>
-            <version>${junit.testcontainer.version}</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
     <build>
+        <pluginManagement>
+            <plugins>
+                <!--
+                  Pinned because maven-enforcer's requirePluginVersions rule flagged them: without
+                  these, the lifecycle silently binds Maven's defaults (clean 2.5, install 2.4,
+                  deploy 2.7, site 3.3, resources 2.6, jar 2.4), so the build is not reproducible
+                  across Maven versions.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>${maven.clean.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>${maven.install.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>${maven.deploy.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-site-plugin</artifactId>
+                    <version>${maven.site.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>${maven.resources.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven.jar.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven.compiler.plugin.version}</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                        <showWarnings>true</showWarnings>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven.surefire.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>${maven.source.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>${maven.javadoc.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>${maven.compiler.plugin.version}</version>
-                <configuration>
-                    <source>${jdk.source.version}</source>
-                    <target>${jdk.target.version}</target>
-                    <release>${jdk.release.version}</release>
-                    <showWarnings>true</showWarnings>
-                    <debug>false</debug>
-                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -231,7 +212,7 @@
                     <execution>
                         <id>attach-sources</id>
                         <goals>
-                            <goal>jar</goal>
+                            <goal>jar-no-fork</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -240,24 +221,39 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>${maven.javadoc.plugin.version}</version>
-                <configuration>
-                    <source>${jdk.source.version}</source>
-                    <sourcepath>${project.build.directory}/delomboked</sourcepath>
-                </configuration>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>
+                        <phase>package</phase>
                         <goals>
                             <goal>jar</goal>
                         </goals>
-                        <phase>package</phase>
                     </execution>
                 </executions>
             </plugin>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven.surefire.plugin.version}</version>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.maven.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>${maven.sonar.plugin.version}</version>
             </plugin>
             <plugin>
                 <groupId>org.sonatype.central</groupId>
@@ -271,78 +267,85 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-release-plugin</artifactId>
-                <version>${maven.release.plugin.version}</version>
-                <configuration>
-                    <autoVersionSubmodules>true</autoVersionSubmodules>
-                    <useReleaseProfile>false</useReleaseProfile>
-                    <releaseProfiles>release</releaseProfiles>
-                    <goals>deploy</goals>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.sonarsource.scanner.maven</groupId>
-                <artifactId>sonar-maven-plugin</artifactId>
-                <version>${maven.sonar.plugin.version}</version>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven.enforcer.plugin.version}</version>
                 <executions>
                     <execution>
-                        <id>sonar-run</id>
-                        <phase>verify</phase>
+                        <id>enforce</id>
+                        <phase>validate</phase>
                         <goals>
-                            <goal>sonar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.jacoco</groupId>
-                <artifactId>jacoco-maven-plugin</artifactId>
-                <version>${jacoco.maven.plugin.version}</version>
-                <executions>
-                    <execution>
-                        <phase>initialize</phase>
-                        <goals>
-                            <goal>prepare-agent</goal>
+                            <goal>enforce</goal>
                         </goals>
                         <configuration>
-                            <append>true</append>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.8.0,)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[17,)</version>
+                                </requireJavaVersion>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.apache.hbase:*</exclude>
+                                        <exclude>log4j:log4j</exclude>
+                                        <exclude>junit:junit</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                                <banDuplicatePomDependencyVersions/>
+                                <requirePluginVersions>
+                                    <banSnapshots>true</banSnapshots>
+                                </requirePluginVersions>
+                            </rules>
+                            <fail>true</fail>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>report</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>report</goal>
-                        </goals>
-                    </execution>
                 </executions>
-                <configuration>
-                    <excludes>
-                    </excludes>
-                </configuration>
             </plugin>
+            <!--
+              Header check runs on every build rather than as a release-time gate, so a file
+              without a header cannot reach main. `mvn license:format` fixes it in place.
+            -->
             <plugin>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok-maven-plugin</artifactId>
-                <version>${lombok.maven.version}</version>
+                <groupId>com.mycila</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>${license.maven.plugin.version}</version>
+                <configuration>
+                    <licenseSets>
+                        <licenseSet>
+                            <header>${maven.multiModuleProjectDirectory}/etc/license-header.txt</header>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                        </licenseSet>
+                    </licenseSets>
+                    <properties>
+                        <license.year>${license.year}</license.year>
+                    </properties>
+                    <mapping>
+                        <java>JAVADOC_STYLE</java>
+                    </mapping>
+                    <strictCheck>true</strictCheck>
+                </configuration>
                 <executions>
                     <execution>
-                        <phase>generate-sources</phase>
+                        <id>check-license-headers</id>
+                        <phase>validate</phase>
                         <goals>
-                            <goal>delombok</goal>
+                            <goal>check</goal>
                         </goals>
                     </execution>
                 </executions>
-                <configuration>
-                    <addOutputDirectory>false</addOutputDirectory>
-                    <sourceDirectory>${project.basedir}/src/main/java</sourceDirectory>
-                    <outputDirectory>${project.build.directory}/delomboked</outputDirectory>
-                </configuration>
             </plugin>
         </plugins>
     </build>
 
     <profiles>
+        <profile>
+            <id>coverage</id>
+            <modules>
+                <module>magazine-coverage</module>
+            </modules>
+        </profile>
         <profile>
             <id>release</id>
             <activation>
@@ -377,5 +380,4 @@
             </build>
         </profile>
     </profiles>
-
 </project>
