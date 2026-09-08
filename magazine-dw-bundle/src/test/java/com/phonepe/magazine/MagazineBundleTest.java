@@ -56,7 +56,8 @@ class MagazineBundleTest {
         final ServletEnvironment servlets = mock(ServletEnvironment.class);
         final ServletRegistration.Dynamic registration = mock(ServletRegistration.Dynamic.class);
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
         when(environment.servlets()).thenReturn(servlets);
         when(servlets.addServlet(org.mockito.ArgumentMatchers.eq("magazineAssets"),
                 org.mockito.ArgumentMatchers.any(Servlet.class))).thenReturn(registration);
@@ -75,7 +76,8 @@ class MagazineBundleTest {
         final Environment environment = mock(Environment.class);
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
 
         bundle().run(configuration, environment);
 
@@ -89,7 +91,8 @@ class MagazineBundleTest {
         final Environment environment = mock(Environment.class);
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
 
         bundle().run(configuration, environment);
 
@@ -110,7 +113,8 @@ class MagazineBundleTest {
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         final MetricRegistry metrics = new MetricRegistry();
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
         when(environment.metrics()).thenReturn(metrics);
 
         final MagazineBundle<TestConfiguration> bundle = bundle();
@@ -143,7 +147,8 @@ class MagazineBundleTest {
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         final MetricRegistry metrics = new MetricRegistry();
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
         when(environment.metrics()).thenReturn(metrics);
 
         bundle().run(configuration, environment);
@@ -169,7 +174,8 @@ class MagazineBundleTest {
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         final MetricRegistry metrics = new MetricRegistry();
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
         when(environment.metrics()).thenReturn(metrics);
 
         bundle().run(configuration, environment);
@@ -189,7 +195,8 @@ class MagazineBundleTest {
         final JerseyEnvironment jersey = mock(JerseyEnvironment.class);
         final MetricRegistry metrics = new MetricRegistry();
         when(environment.jersey()).thenReturn(jersey);
-        when(environment.lifecycle()).thenReturn(mock(LifecycleEnvironment.class));
+        final LifecycleEnvironment lifecycle = mock(LifecycleEnvironment.class);
+        when(environment.lifecycle()).thenReturn(lifecycle);
         when(environment.metrics()).thenReturn(metrics);
 
         final MagazineBundle<TestConfiguration> bundle = bundle();

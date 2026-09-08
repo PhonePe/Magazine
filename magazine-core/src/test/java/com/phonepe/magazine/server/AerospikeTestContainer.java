@@ -25,12 +25,15 @@ import com.github.dockerjava.api.model.Capability;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static java.time.temporal.ChronoUnit.SECONDS;
 
@@ -105,31 +108,33 @@ public final class AerospikeTestContainer {
 
     /**
      * The container reports ready before Aerospike accepts client connections, so poll until a
-     * client actually connects rather than racing the first test.
+     * client actually connects rather than racing the first test. Awaitility owns the poll loop
+     * and its interrupt handling, rather than a hand-rolled {@code Thread.sleep} retry.
      */
     private static IAerospikeClient connect(final GenericContainer<?> container) {
         final Host host = new Host(container.getHost(), container.getMappedPort(SERVICE_PORT));
-        final long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        AerospikeException lastFailure = null;
-        while (System.nanoTime() < deadline) {
-            try {
-                final IAerospikeClient client = new AerospikeClient(new ClientPolicy(), host);
-                Runtime.getRuntime().addShutdownHook(new Thread(client::close));
-                return client;
-            } catch (AerospikeException e) {
-                lastFailure = e;
-                sleep();
-            }
-        }
-        throw new IllegalStateException("Aerospike did not become ready", lastFailure);
-    }
-
-    private static void sleep() {
+        final AtomicReference<AerospikeException> lastFailure = new AtomicReference<>();
+        final AtomicReference<IAerospikeClient> connected = new AtomicReference<>();
         try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for Aerospike", e);
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(60))
+                    .pollInterval(Duration.ofMillis(100))
+                    .ignoreExceptions()
+                    .until(() -> {
+                        try {
+                            final IAerospikeClient client = new AerospikeClient(new ClientPolicy(), host);
+                            connected.set(client);
+                            return true;
+                        } catch (AerospikeException e) {
+                            lastFailure.set(e);
+                            return false;
+                        }
+                    });
+        } catch (ConditionTimeoutException e) {
+            throw new IllegalStateException("Aerospike did not become ready", lastFailure.get());
         }
+        final IAerospikeClient client = connected.get();
+        Runtime.getRuntime().addShutdownHook(new Thread(client::close));
+        return client;
     }
 }

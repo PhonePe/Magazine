@@ -112,6 +112,7 @@
         <archunit.version>1.4.1</archunit.version>
         <testcontainer.version>2.0.5</testcontainer.version>
         <dropwizard.version>5.0.2</dropwizard.version>
+        <awaitility.version>4.2.2</awaitility.version>
 
         <license.year>2025</license.year>
 

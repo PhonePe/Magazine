@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MagazineDeDupeTest extends AerospikeMagazineTestBase {
 
     @Test
-    public void dedupeSuppressesRepeatedLoad() {
+    void dedupeSuppressesRepeatedLoad() {
         // The marker is claimed with a CREATE_ONLY write, so the server admits exactly one creator
         // and the second load is suppressed without any lock or read-before-write.
         Magazine<String> magazine = Magazine.<String>builder()
@@ -52,7 +52,7 @@ class MagazineDeDupeTest extends AerospikeMagazineTestBase {
      * elapsed - silently dropping the caller's data.
      */
     @Test
-    public void unconfirmedDeDupeClaimIsWithdrawnSoRetriesAreNotSuppressed() {
+    void unconfirmedDeDupeClaimIsWithdrawnSoRetriesAreNotSuppressed() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         DeDupeGuard<String> guard = DeDupeGuard.aerospike(aerospikeClient,
                 new MagazineMetrics(registry), "NAMESPACE", "FARM_ID", "CLIENT_ID",
@@ -80,7 +80,7 @@ class MagazineDeDupeTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void dedupeDisabledAllowsRepeatedLoad() {
+    void dedupeDisabledAllowsRepeatedLoad() {
         AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITHOUT_DEDUPE")

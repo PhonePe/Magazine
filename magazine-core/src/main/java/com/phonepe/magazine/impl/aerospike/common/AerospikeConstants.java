@@ -18,6 +18,7 @@ package com.phonepe.magazine.impl.aerospike.common;
 
 import java.util.Set;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
@@ -45,11 +46,13 @@ public final class AerospikeConstants {
      * Bins to project on metadata batch reads. Metadata records are read {@code shards}-wide on
      * every active-shard refresh, so projecting keeps that fan-out from carrying bins nobody reads.
      */
-    public static final String[] METADATA_BINS = {
+    @Getter
+    private static final String[] metadataBins = {
             LOAD_POINTER, FIRE_POINTER, LOAD_COUNTER, FIRE_COUNTER};
 
     /** Bins to project on data reads - the payload is the only bin any caller consumes. */
-    public static final String[] DATA_BINS = {DATA};
+    @Getter
+    private static final String[] dataBins = {DATA};
 
     // --- key suffixes -----------------------------------------------------------------------
     public static final String KEY_DELIMITER = "_";

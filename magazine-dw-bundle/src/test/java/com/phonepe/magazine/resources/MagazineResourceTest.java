@@ -237,7 +237,7 @@ class MagazineResourceTest {
             }
         };
         final MagazineManager manager = mock(MagazineManager.class);
-        final Magazine<Object> opaque = Mockito.mock(Magazine.class);
+        final Magazine<Object> opaque = mock(Magazine.class);
         when(opaque.getMagazineIdentifier()).thenReturn("jobs");
         when(opaque.getShards()).thenReturn(4);
         when(opaque.peek(pointers)).thenReturn(Set.of(new MagazineData<>(hostile, 1, 0, "jobs")));
@@ -310,6 +310,6 @@ class MagazineResourceTest {
 
     @SuppressWarnings("unchecked")
     private static Magazine<String> mockMagazine() {
-        return Mockito.mock(Magazine.class);
+        return mock(Magazine.class);
     }
 }

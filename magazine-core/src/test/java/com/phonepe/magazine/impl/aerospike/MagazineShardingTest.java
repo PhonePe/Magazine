@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MagazineShardingTest extends AerospikeMagazineTestBase {
 
     @Test
-    public void persistedShardCountIsAdoptedWithoutOptIn() {
+    void persistedShardCountIsAdoptedWithoutOptIn() {
         String magazineIdentifier = "SHARD_ADOPT_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 2);
@@ -52,7 +52,7 @@ class MagazineShardingTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void shardIncreaseIsPersistedWhenExplicitlyAllowed() {
+    void shardIncreaseIsPersistedWhenExplicitlyAllowed() {
         String magazineIdentifier = "SHARD_INCREASE_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 2);
@@ -69,7 +69,7 @@ class MagazineShardingTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void unshardedMagazineIsNotPromotedWithoutOptIn() {
+    void unshardedMagazineIsNotPromotedWithoutOptIn() {
         String magazineIdentifier = "SHARD_PROMOTE_MAGAZINE";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -84,7 +84,7 @@ class MagazineShardingTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void drainedUnshardedMagazineIsPromotedWhenAllowed() {
+    void drainedUnshardedMagazineIsPromotedWhenAllowed() {
         String magazineIdentifier = "SHARD_PROMOTE_DRAINED";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -110,7 +110,7 @@ class MagazineShardingTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void unshardedMagazineWithUndeliveredRecordsIsNotPromoted() {
+    void unshardedMagazineWithUndeliveredRecordsIsNotPromoted() {
         String magazineIdentifier = "SHARD_PROMOTE_PENDING";
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, magazineIdentifier, 1);
@@ -133,7 +133,7 @@ class MagazineShardingTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void oneStorageServesMagazinesWithDifferentShardCounts() {
+    void oneStorageServesMagazinesWithDifferentShardCounts() {
         String metaSet = "FARM_ID_META_SET";
         seedShardConfiguration(metaSet, "MIXED_SHARDS_TWO", 2);
         seedShardConfiguration(metaSet, "MIXED_SHARDS_EIGHT", 8);

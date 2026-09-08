@@ -37,6 +37,7 @@ import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.metrics.MagazineMetrics;
 import com.phonepe.magazine.metrics.StorageOperation;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
@@ -123,10 +124,10 @@ public final class MagazineMetadataStore {
     public OptionalLong claimFirePointer(final MagazineContext context, final Integer shard) {
         metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.CLAIM_FIRE_POINTER);
         try {
-            final Record record = client.operate(claimPolicy, pointerKey(context, shard),
+            final Record claimResult = client.operate(claimPolicy, pointerKey(context, shard),
                     Operation.add(new Bin(AerospikeConstants.FIRE_POINTER, 1L)),
                     Operation.get(AerospikeConstants.FIRE_POINTER));
-            return OptionalLong.of(record.getLong(AerospikeConstants.FIRE_POINTER));
+            return OptionalLong.of(claimResult.getLong(AerospikeConstants.FIRE_POINTER));
         } catch (AerospikeException e) {
             if (e.getResultCode() == ResultCode.FILTERED_OUT) {
                 return OptionalLong.empty();
@@ -139,13 +140,13 @@ public final class MagazineMetadataStore {
     }
 
     public long incrementAndGetLoadPointer(final MagazineContext context, final Integer shard) {
-        final Record record = operateOnMetadata(pointerKey(context, shard), context,
+        final Record updated = operateOnMetadata(pointerKey(context, shard), context,
                 StorageOperation.INCREMENT_LOAD_POINTER, AerospikeConstants.LOAD_POINTER, 1L);
-        if (Objects.isNull(record)) {
+        if (Objects.isNull(updated)) {
             throw MagazineExceptions.magazineUnprepared(
                     String.format(ErrorMessage.ERROR_READING_POINTERS, context.getMagazineIdentifier()));
         }
-        return record.getLong(AerospikeConstants.LOAD_POINTER);
+        return updated.getLong(AerospikeConstants.LOAD_POINTER);
     }
 
     public void incrementLoadCounter(final MagazineContext context, final Integer shard) {
@@ -264,20 +265,21 @@ public final class MagazineMetadataStore {
     }
 
     private Record[] batchRead(final MagazineContext context,
-            final Key[] keys,
+            final List<Key> keys,
             final StorageOperation operation) {
         return retryerFactory.call(() -> {
             metrics.aerospikeCall(context.getMagazineIdentifier(), operation);
-            return client.get(client.getBatchPolicyDefault(), keys, AerospikeConstants.METADATA_BINS);
+            return client.get(client.getBatchPolicyDefault(), keys.toArray(new Key[0]),
+                    AerospikeConstants.getMetadataBins());
         });
     }
 
     private Key pointerKey(final MagazineContext context, final Integer shard) {
-        return keys(context).pointerKeys[Objects.isNull(shard) ? 0 : shard];
+        return keys(context).pointerKeys().get(Objects.isNull(shard) ? 0 : shard);
     }
 
     private Key counterKey(final MagazineContext context, final Integer shard) {
-        return keys(context).counterKeys[Objects.isNull(shard) ? 0 : shard];
+        return keys(context).counterKeys().get(Objects.isNull(shard) ? 0 : shard);
     }
 
     private MetadataKeys keys(final MagazineContext context) {
@@ -285,12 +287,12 @@ public final class MagazineMetadataStore {
     }
 
     private MetadataKeys buildKeys(final MagazineContext context) {
-        final Key[] pointerKeys = AerospikeNaming.metaKeys(namespace, metaSetName, context,
-                AerospikeNaming.pointerSuffix(context));
-        // Unified magazines co-locate counters in the pointer record, so the arrays are the same.
-        final Key[] counterKeys = AerospikeNaming.usesUnifiedMetadata(context)
+        final List<Key> pointerKeys = List.of(AerospikeNaming.metaKeys(namespace, metaSetName, context,
+                AerospikeNaming.pointerSuffix(context)));
+        // Unified magazines co-locate counters in the pointer record, so the lists are the same.
+        final List<Key> counterKeys = AerospikeNaming.usesUnifiedMetadata(context)
                 ? pointerKeys
-                : AerospikeNaming.metaKeys(namespace, metaSetName, context, AerospikeConstants.COUNTERS);
+                : List.of(AerospikeNaming.metaKeys(namespace, metaSetName, context, AerospikeConstants.COUNTERS));
         return new MetadataKeys(pointerKeys, counterKeys);
     }
 
@@ -299,11 +301,11 @@ public final class MagazineMetadataStore {
         return Exp.cond(Exp.binExists(bin), Exp.intBin(bin), Exp.val(0L));
     }
 
-    private static long longOrZero(final Record record, final String bin) {
-        return Objects.nonNull(record) ? record.getLong(bin) : 0L;
+    private static long longOrZero(final Record source, final String bin) {
+        return Objects.nonNull(source) ? source.getLong(bin) : 0L;
     }
 
-    private record MetadataKeys(Key[] pointerKeys, Key[] counterKeys) {
+    private record MetadataKeys(List<Key> pointerKeys, List<Key> counterKeys) {
     }
 
     /** Initial capacity that avoids a rehash for the given element count at the default 0.75f. */

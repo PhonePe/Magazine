@@ -43,7 +43,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     private MagazineManager magazineManager;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         magazineManager = new MagazineManager("CLIENT_ID");
         magazineManager.refresh(List.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
@@ -68,7 +68,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void stringMagazineTest() {
+    void stringMagazineTest() {
         Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID5");
         Magazine<String> magazine2 = magazineManager.getMagazine("MAGAZINE_ID4");
 
@@ -113,7 +113,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void magazineCannotDeleteAnotherMagazinesData() {
+    void magazineCannotDeleteAnotherMagazinesData() {
         Magazine<String> first = Magazine.<String>builder()
                 .magazineIdentifier("DELETE_OWNER_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -129,7 +129,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void magazinePeekTest() {
+    void magazinePeekTest() {
         Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
         magazine.load("DATA1");
         magazine.load("DATA2");
@@ -167,7 +167,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void peekRejectsShardOutsideMagazineRange() {
+    void peekRejectsShardOutsideMagazineRange() {
         Magazine<String> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
         magazine.load("DATA1");
 
@@ -178,7 +178,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void longMagazineTest() {
+    void longMagazineTest() {
         Magazine<Long> magazine = magazineManager.getMagazine("MAGAZINE_ID2");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
@@ -215,7 +215,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void integerMagazineTest() {
+    void integerMagazineTest() {
         Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID3");
 
         MetaData metaData = collectMetaData(magazine.getMetaData());
@@ -242,11 +242,12 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void exceptionsTest() {
-        MagazineException typeMismatch = assertThrows(MagazineException.class, () -> {
-            Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
-            magazine.load(12);
-        });
+    void exceptionsTest() {
+        // getMagazine() is resolved outside the lambda: MAGAZINE_ID1 exists, so it cannot throw
+        // here, but a lambda that lexically contains two calls that can each raise a
+        // MagazineException would leave it ambiguous which one this test is pinning - load(12) is.
+        Magazine<Integer> magazine = magazineManager.getMagazine("MAGAZINE_ID1");
+        MagazineException typeMismatch = assertThrows(MagazineException.class, () -> magazine.load(12));
         assertEquals(ErrorCode.DATA_TYPE_MISMATCH, typeMismatch.getErrorCode());
 
         MagazineException notFound = assertThrows(MagazineException.class,
@@ -255,7 +256,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void payloadTypeValidationTest() {
+    void payloadTypeValidationTest() {
         Magazine<String> stringMagazine = magazineManager.getMagazine("MAGAZINE_ID1");
         assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> stringMagazine.load(null));
         assertMagazineError(ErrorCode.DATA_TYPE_MISMATCH, () -> buildStorage(

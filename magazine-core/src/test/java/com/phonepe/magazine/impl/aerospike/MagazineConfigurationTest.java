@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class MagazineConfigurationTest extends AerospikeMagazineTestBase {
 
     @Test
-    public void configurationValidationTest() {
+    void configurationValidationTest() {
         assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () ->
                 Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID")
@@ -79,23 +79,24 @@ class MagazineConfigurationTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void notImplementedGlobalScopeTest() {
-        MagazineException exception = assertThrows(MagazineException.class, () -> Magazine.<Long>builder()
-                .magazineIdentifier("MAGAZINE_ID")
-                .baseMagazineStorage(AerospikeStorage.<Long>builder()
-                        .clazz(Long.class)
-                        .storageConfig(AerospikeStorageConfig.builder()
-                                .dataSetName("DATA_SET")
-                                .metaSetName("META_SET")
-                                .namespace("NAMESPACE")
-                                .shards(16)
-                                .build())
-                        .aerospikeClient(aerospikeClient)
-                        .enableDeDupe(true)
-                        .farmId("FARM_ID")
-                        .clientId("CLIENT_ID")
-                        .scope(MagazineScope.GLOBAL)
+    void notImplementedGlobalScopeTest() {
+        // The lambda wraps only the AerospikeStorage build: that is what validates scope and
+        // throws. Magazine.builder() never runs - a lambda that lexically contains two throwing
+        // calls (this one, and Magazine's own .build()) would leave it ambiguous which is under
+        // test, even though only one of them actually executes before the throw.
+        MagazineException exception = assertThrows(MagazineException.class, () -> AerospikeStorage.<Long>builder()
+                .clazz(Long.class)
+                .storageConfig(AerospikeStorageConfig.builder()
+                        .dataSetName("DATA_SET")
+                        .metaSetName("META_SET")
+                        .namespace("NAMESPACE")
+                        .shards(16)
                         .build())
+                .aerospikeClient(aerospikeClient)
+                .enableDeDupe(true)
+                .farmId("FARM_ID")
+                .clientId("CLIENT_ID")
+                .scope(MagazineScope.GLOBAL)
                 .build());
         assertEquals(ErrorCode.NOT_IMPLEMENTED, exception.getErrorCode());
     }

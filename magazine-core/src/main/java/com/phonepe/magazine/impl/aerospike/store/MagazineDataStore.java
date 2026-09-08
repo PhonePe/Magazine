@@ -95,7 +95,7 @@ public final class MagazineDataStore<T> {
         final Key key = dataKey(context, shard, pointer);
         return retryerFactory.call(() -> {
             metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.READ_DATA);
-            return client.get(client.getReadPolicyDefault(), key, AerospikeConstants.DATA_BINS);
+            return client.get(client.getReadPolicyDefault(), key, AerospikeConstants.getDataBins());
         });
     }
 
@@ -115,7 +115,7 @@ public final class MagazineDataStore<T> {
         for (Map.Entry<Integer, Set<Long>> entry : shardPointersMap.entrySet()) {
             for (long pointer : entry.getValue()) {
                 batchReads.add(new BatchRead(dataKey(context, entry.getKey(), pointer),
-                        AerospikeConstants.DATA_BINS));
+                        AerospikeConstants.getDataBins()));
                 requests.add(new PeekRequest(entry.getKey(), pointer));
             }
         }
@@ -136,11 +136,11 @@ public final class MagazineDataStore<T> {
                 throw MagazineExceptions.connectionError(
                         String.format(ErrorMessage.ERROR_PEEKING_DATA, context.getMagazineIdentifier()), null);
             }
-            final Record record = batchRead.record;
-            if (Objects.nonNull(record)) {
+            final Record dataRecord = batchRead.record;
+            if (Objects.nonNull(dataRecord)) {
                 final PeekRequest request = requests.get(i);
                 peeked.add(new MagazineData<>(
-                        clazz.cast(record.getValue(AerospikeConstants.DATA)),
+                        clazz.cast(dataRecord.getValue(AerospikeConstants.DATA)),
                         request.pointer(),
                         request.shard(),
                         context.getMagazineIdentifier()));

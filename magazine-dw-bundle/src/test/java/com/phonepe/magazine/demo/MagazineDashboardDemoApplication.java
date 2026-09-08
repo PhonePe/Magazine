@@ -105,8 +105,8 @@ public final class MagazineDashboardDemoApplication extends Application<Magazine
         when(magazine.peek(anyMap())).thenAnswer(invocation -> {
             final Map<Integer, Set<Long>> requested = invocation.getArgument(0);
             return records.stream()
-                    .filter(record -> requested.getOrDefault(record.getShard(), Set.of())
-                            .contains(record.getFirePointer()))
+                    .filter(magazineData -> requested.getOrDefault(magazineData.getShard(), Set.of())
+                            .contains(magazineData.getFirePointer()))
                     .collect(java.util.stream.Collectors.toSet());
         });
         return magazine;

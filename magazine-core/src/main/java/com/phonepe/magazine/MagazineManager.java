@@ -18,6 +18,7 @@ package com.phonepe.magazine;
 
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
+import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
@@ -25,16 +26,18 @@ import lombok.ToString;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Getter
-@EqualsAndHashCode
-@ToString
+@EqualsAndHashCode(of = "clientId")
+@ToString(of = "clientId")
 public class MagazineManager {
 
     private final String clientId;
-    private volatile Map<String, Magazine<?>> magazineMap = Map.of();
+    @Getter(AccessLevel.NONE)
+    private final AtomicReference<Map<String, Magazine<?>>> magazineMap = new AtomicReference<>(Map.of());
 
     public MagazineManager(final String clientId) {
         this.clientId = clientId;
@@ -46,10 +49,14 @@ public class MagazineManager {
      * @param magazines
      */
     public void refresh(final List<Magazine<?>> magazines) {
-        magazineMap = magazines.stream()
+        magazineMap.set(magazines.stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Magazine::getMagazineIdentifier,
-                        Function.identity()));
+                        Function.identity())));
+    }
+
+    public Map<String, Magazine<?>> getMagazineMap() {
+        return magazineMap.get();
     }
 
     /**
@@ -61,7 +68,7 @@ public class MagazineManager {
      */
     @SuppressWarnings("unchecked")
     public <T> Magazine<T> getMagazine(final String magazineIdentifier) {
-        Magazine<T> magazine = (Magazine<T>) (magazineMap.get(magazineIdentifier));
+        Magazine<T> magazine = (Magazine<T>) (magazineMap.get().get(magazineIdentifier));
         if (Objects.isNull(magazine)) {
             throw MagazineException.builder()
                     .message(String.format("Magazine not found for identifier %s", magazineIdentifier))

@@ -37,7 +37,7 @@ class MagazineMetricsTest extends AerospikeMagazineTestBase {
      * a read before the claim.
      */
     @Test
-    public void hotPathRoundTripCountsAreBounded() {
+    void hotPathRoundTripCountsAreBounded() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         AerospikeStorage<String> storage = buildStorage(
                 buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
@@ -68,7 +68,7 @@ class MagazineMetricsTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void metricsCanBeDisabledExplicitlyEvenWithARegistry() {
+    void metricsCanBeDisabledExplicitlyEvenWithARegistry() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         AerospikeStorage<String> storage = buildStorage(
                 AerospikeStorageConfig.builder()

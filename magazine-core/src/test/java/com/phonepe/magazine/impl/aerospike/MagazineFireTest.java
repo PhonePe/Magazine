@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MagazineFireTest extends AerospikeMagazineTestBase {
 
     @Test
-    public void emptyMagazineReturnsNothingToFire() {
+    void emptyMagazineReturnsNothingToFire() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("EMPTY_CACHE_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -53,7 +53,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void missingRecordReturnsNothingToFireAfterShardIsExhausted() {
+    void missingRecordReturnsNothingToFireAfterShardIsExhausted() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MISSING_RECORD_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))
@@ -65,7 +65,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void fireSkipsMissingPointerWithinActiveShard() {
+    void fireSkipsMissingPointerWithinActiveShard() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITH_POINTER_HOLE")
                 .baseMagazineStorage(buildStorage(
@@ -87,7 +87,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void concurrentFireClaimsEachRecordOnce() throws Exception {
+    void concurrentFireClaimsEachRecordOnce() throws Exception {
         Magazine<String> magazine = buildUnshardedMagazine(
                 "CONCURRENT_FIRE_MAGAZINE", "CONCURRENT_FIRE_DATA", "CONCURRENT_FIRE_META");
         int records = 20;
@@ -126,7 +126,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void fireSkipsMoreThanFiveMissingPointers() {
+    void fireSkipsMoreThanFiveMissingPointers() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("MAGAZINE_WITH_MANY_POINTER_HOLES")
                 .baseMagazineStorage(buildStorage(
@@ -149,7 +149,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void fireGivesUpWithRetriesExhaustedWhenHoleBudgetIsSpent() {
+    void fireGivesUpWithRetriesExhaustedWhenHoleBudgetIsSpent() {
         // A run of holes longer than the budget must NOT report NOTHING_TO_FIRE: data may still
         // exist further along the shard, so the caller has to be able to tell "gave up" from
         // "queue is empty".
@@ -175,7 +175,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void fireSurfacesMissingMetadataRatherThanHidingTheShard() {
+    void fireSurfacesMissingMetadataRatherThanHidingTheShard() {
         // metaDataTtl is validated to outlive recordTtl, so a missing metadata record is an
         // invariant violation, not a drained shard. It must be loud rather than silently
         // suppressing the shard, which would look identical to an empty queue.
@@ -197,7 +197,7 @@ class MagazineFireTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void interruptedFireRetryPreservesInterruptStatus() {
+    void interruptedFireRetryPreservesInterruptStatus() {
         Magazine<String> magazine = Magazine.<String>builder()
                 .magazineIdentifier("INTERRUPTED_FIRE_MAGAZINE")
                 .baseMagazineStorage(buildMagazineStorage(String.class, false))

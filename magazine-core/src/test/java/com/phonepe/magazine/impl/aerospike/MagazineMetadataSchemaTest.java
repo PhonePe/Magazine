@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
 
     @Test
-    public void shardConfigurationHasFiveYearRetention() {
+    void shardConfigurationHasFiveYearRetention() {
         // Initialised here rather than relied on from a shared fixture: this used to assert against
         // a magazine some other test's setup happened to have created.
         buildMagazineStorage(String.class).initialize("SHARD_CONFIG_MAGAZINE");
@@ -53,7 +53,7 @@ class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void freshMagazineStoresCountersAndPointersTogether() {
+    void freshMagazineStoresCountersAndPointersTogether() {
         Magazine<String> magazine = buildUnshardedMagazine(
                 "UNIFIED_METADATA_MAGAZINE", "UNIFIED_METADATA_DATA", "UNIFIED_METADATA_META");
 
@@ -76,7 +76,7 @@ class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void activeShardDiscoveryRequiresPublishedCounter() {
+    void activeShardDiscoveryRequiresPublishedCounter() {
         Magazine<String> magazine = buildUnshardedMagazine(
                 "COUNTER_DRIFT_MAGAZINE", "COUNTER_DRIFT_DATA", "COUNTER_DRIFT_META");
 
@@ -95,7 +95,7 @@ class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void versionlessMagazineContinuesUsingLegacyMetadata() {
+    void versionlessMagazineContinuesUsingLegacyMetadata() {
         String magazineIdentifier = "LEGACY_METADATA_MAGAZINE";
         String metaSet = "FARM_ID_LEGACY_METADATA_META";
         aerospikeClient.put(
@@ -135,7 +135,7 @@ class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void storageCanServeLegacyAndUnifiedMagazines() {
+    void storageCanServeLegacyAndUnifiedMagazines() {
         AerospikeStorage<String> storage = buildMagazineStorage(String.class, false);
         String legacyIdentifier = "SHARED_STORAGE_LEGACY";
         aerospikeClient.put(
@@ -158,7 +158,7 @@ class MagazineMetadataSchemaTest extends AerospikeMagazineTestBase {
     }
 
     @Test
-    public void unsupportedMetadataSchemaIsRejected() {
+    void unsupportedMetadataSchemaIsRejected() {
         String magazineIdentifier = "UNSUPPORTED_SCHEMA_MAGAZINE";
         aerospikeClient.put(
                 aerospikeClient.getWritePolicyDefault(),

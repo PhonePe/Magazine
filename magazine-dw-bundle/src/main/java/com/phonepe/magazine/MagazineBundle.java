@@ -74,12 +74,7 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
         }
     }
 
-    /**
-     * Override to publish somewhere other than the admin port - a Prometheus or OTLP registry, for
-     * instance. Whatever this returns is attached to Micrometer's global registry, so every
-     * {@code AerospikeStorage} picks it up without being handed anything.
-     */
-    protected MeterRegistry createMeterRegistry(final T configuration, final Environment environment) {
+    private MeterRegistry createMeterRegistry(final Environment environment) {
         return DropwizardMagazineMetrics.bridgedTo(environment);
     }
 
@@ -98,7 +93,7 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
             return new CompositeMeterRegistry();
         }
         final MeterRegistry registry = Objects.requireNonNull(
-                createMeterRegistry(configuration, environment), "meterRegistry");
+                createMeterRegistry(environment), "meterRegistry");
         Metrics.addRegistry(registry);
         environment.lifecycle().manage(new Managed() {
             @Override

@@ -198,37 +198,40 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 }
                 final Integer shard = activeShards.randomShardForFire(context);
                 final OptionalLong claimed = metadataStore.claimFirePointer(context, shard);
+                MagazineData<T> delivered = null;
                 if (claimed.isEmpty()) {
                     // Nothing left on this shard. Prune it rather than wait for the next refresh;
                     // once every shard is pruned the selector raises NOTHING_TO_FIRE.
                     metrics.fireClaim(magazineIdentifier, MagazineMetrics.ClaimOutcome.DRAINED);
                     activeShards.suppress(context, shard);
-                    continue;
-                }
-                metrics.fireClaim(magazineIdentifier, MagazineMetrics.ClaimOutcome.WON);
-
-                final long claimedPointer = claimed.getAsLong();
-                final Record dataRecord = dataStore.read(context, shard, claimedPointer);
-                if (Objects.isNull(dataRecord)) {
-                    metrics.fireHoleSkip(magazineIdentifier);
-                    if (++holeSkips >= maxFireHoleSkips) {
-                        throw MagazineExceptions.retriesExhausted(
-                                String.format(ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier));
+                } else {
+                    metrics.fireClaim(magazineIdentifier, MagazineMetrics.ClaimOutcome.WON);
+                    final long claimedPointer = claimed.getAsLong();
+                    final Record dataRecord = dataStore.read(context, shard, claimedPointer);
+                    if (Objects.isNull(dataRecord)) {
+                        metrics.fireHoleSkip(magazineIdentifier);
+                        if (++holeSkips >= maxFireHoleSkips) {
+                            throw MagazineExceptions.retriesExhausted(
+                                    String.format(ErrorMessage.ERROR_FIRING_DATA, magazineIdentifier));
+                        }
+                        // else: advanced past a hole - this was forward progress, loop again
+                    } else {
+                        // Cannot ride along with the claim: at claim time we do not yet know whether
+                        // the slot holds data, and only real deliveries may be counted. See
+                        // MagazineMetadataStore#incrementFireCounter for why under-counting is safe.
+                        metadataStore.incrementFireCounter(context, shard);
+                        metrics.fireOutcome(magazineIdentifier, MagazineMetrics.FireOutcome.DELIVERED);
+                        delivered = MagazineData.<T>builder()
+                                .firePointer(claimedPointer)
+                                .shard(shard)
+                                .magazineIdentifier(magazineIdentifier)
+                                .data(clazz.cast(dataRecord.getValue(AerospikeConstants.DATA)))
+                                .build();
                     }
-                    continue; // advanced past a hole - this was forward progress
                 }
-
-                // Cannot ride along with the claim: at claim time we do not yet know whether the
-                // slot holds data, and only real deliveries may be counted. See
-                // MagazineMetadataStore#incrementFireCounter for why under-counting is safe.
-                metadataStore.incrementFireCounter(context, shard);
-                metrics.fireOutcome(magazineIdentifier, MagazineMetrics.FireOutcome.DELIVERED);
-                return MagazineData.<T>builder()
-                        .firePointer(claimedPointer)
-                        .shard(shard)
-                        .magazineIdentifier(magazineIdentifier)
-                        .data(clazz.cast(dataRecord.getValue(AerospikeConstants.DATA)))
-                        .build();
+                if (Objects.nonNull(delivered)) {
+                    return delivered;
+                }
             }
         } catch (Exception e) {
             final MagazineException failure = mapFailure(e, ErrorMessage.ERROR_FIRING_DATA, context);

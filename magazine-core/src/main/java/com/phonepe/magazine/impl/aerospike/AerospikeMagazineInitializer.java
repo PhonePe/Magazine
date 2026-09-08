@@ -83,7 +83,7 @@ final class AerospikeMagazineInitializer {
                 return new MagazineContext(magazineIdentifier,
                         AerospikeConstants.UNIFIED_METADATA_SCHEMA_VERSION, configuredShards);
             }
-            shardConfiguration = result.record();
+            shardConfiguration = result.existingRecord();
         }
 
         if (Objects.isNull(shardConfiguration)) {
@@ -182,11 +182,11 @@ final class AerospikeMagazineInitializer {
                     new Bin(AerospikeConstants.CREATED_AT, System.currentTimeMillis()));
             return new InitializationResult(true, null);
         } catch (AerospikeException e) {
-            final Record record = client.get(client.getReadPolicyDefault(), key);
-            if (Objects.isNull(record)) {
+            final Record existing = client.get(client.getReadPolicyDefault(), key);
+            if (Objects.isNull(existing)) {
                 throw e;
             }
-            return new InitializationResult(false, record);
+            return new InitializationResult(false, existing);
         }
     }
 
@@ -196,29 +196,29 @@ final class AerospikeMagazineInitializer {
         retryerFactory.call(() -> {
             final WritePolicy writePolicy = new WritePolicy(client.getWritePolicyDefault());
             writePolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
-                    writePolicy.failOnFilteredOut = true;
-                    writePolicy.filterExp = Exp.build(Exp.eq(
-                            Exp.intBin(AerospikeConstants.SHARDS_BIN), Exp.val(expectedShards)));
-                    writePolicy.expiration = AerospikeConstants.SHARD_CONFIGURATION_TTL_SECONDS;
-                    try {
-                        return client.operate(writePolicy, key,
-                                Operation.put(new Bin(AerospikeConstants.SHARDS_BIN, targetShards)),
-                                Operation.get());
-                    } catch (AerospikeException e) {
-                        if (e.getResultCode() != ResultCode.FILTERED_OUT) {
-                            throw e;
-                        }
-                        final Record record = client.get(client.getReadPolicyDefault(), key);
-                        if (Objects.nonNull(record)
-                                && record.getInt(AerospikeConstants.SHARDS_BIN) == targetShards) {
-                            return record;
-                        }
-                        throw MagazineExceptions.invalidShards(
-                                "Magazine shard configuration changed concurrently.");
-                    }
-                });
+            writePolicy.failOnFilteredOut = true;
+            writePolicy.filterExp = Exp.build(Exp.eq(
+                    Exp.intBin(AerospikeConstants.SHARDS_BIN), Exp.val(expectedShards)));
+            writePolicy.expiration = AerospikeConstants.SHARD_CONFIGURATION_TTL_SECONDS;
+            try {
+                return client.operate(writePolicy, key,
+                        Operation.put(new Bin(AerospikeConstants.SHARDS_BIN, targetShards)),
+                        Operation.get());
+            } catch (AerospikeException e) {
+                if (e.getResultCode() != ResultCode.FILTERED_OUT) {
+                    throw e;
+                }
+                final Record existing = client.get(client.getReadPolicyDefault(), key);
+                if (Objects.nonNull(existing)
+                        && existing.getInt(AerospikeConstants.SHARDS_BIN) == targetShards) {
+                    return existing;
+                }
+                throw MagazineExceptions.invalidShards(
+                        "Magazine shard configuration changed concurrently.");
+            }
+        });
     }
 
-    private record InitializationResult(boolean created, Record record) {
+    private record InitializationResult(boolean created, Record existingRecord) {
     }
 }
