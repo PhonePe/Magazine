@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK 17 and Maven Central credentials
         uses: actions/setup-java@v5
         with:
@@ -24,17 +25,7 @@ jobs:
           server-id: central
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
-          gpg-private-key: ${{ secrets.CENTRAL_GPG_KEY }}
-          gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Verify GPG key and passphrase
-        shell: bash
-        env:
-          GPG_KEY: ${{ secrets.CENTRAL_GPG_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.CENTRAL_GPG_KEY_PASSWORD }}
-        run: |
-          test -n "$GPG_KEY" || { echo "CENTRAL_GPG_KEY is unavailable"; exit 1; }
-          test -n "$GPG_PASSPHRASE" || { echo "CENTRAL_GPG_KEY_PASSWORD is unavailable"; exit 1; }
-          gpg --batch --list-secret-keys --keyid-format LONG
+
       - name: Set snapshot version from project version
         shell: bash
         run: |
@@ -44,15 +35,17 @@ jobs:
           else
             snapshot_version="${project_version}-SNAPSHOT"
           fi
+          echo "Publishing ${snapshot_version}"
           mvn --batch-mode versions:set \
             -DnewVersion="$snapshot_version" \
             -DprocessAllModules=true \
             -DgenerateBackupPoms=false
-      - name: Verify snapshot build
+
+      - name: Build and test
         run: mvn --batch-mode verify
+
       - name: Publish snapshot
-        run: mvn --batch-mode -P release deploy -DskipTests
+        run: mvn --batch-mode deploy -DskipTests
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_TOKEN_PASSWORD }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.CENTRAL_GPG_KEY_PASSWORD }}
