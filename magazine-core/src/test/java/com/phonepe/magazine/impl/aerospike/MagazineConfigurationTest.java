@@ -80,18 +80,15 @@ class MagazineConfigurationTest extends AerospikeMagazineTestBase {
 
     @Test
     void notImplementedGlobalScopeTest() {
-        // The lambda wraps only the AerospikeStorage build: that is what validates scope and
-        // throws. Magazine.builder() never runs - a lambda that lexically contains two throwing
-        // calls (this one, and Magazine's own .build()) would leave it ambiguous which is under
-        // test, even though only one of them actually executes before the throw.
+        AerospikeStorageConfig config = AerospikeStorageConfig.builder()
+                .dataSetName("DATA_SET")
+                .metaSetName("META_SET")
+                .namespace("NAMESPACE")
+                .shards(16)
+                .build();
         MagazineException exception = assertThrows(MagazineException.class, () -> AerospikeStorage.<Long>builder()
                 .clazz(Long.class)
-                .storageConfig(AerospikeStorageConfig.builder()
-                        .dataSetName("DATA_SET")
-                        .metaSetName("META_SET")
-                        .namespace("NAMESPACE")
-                        .shards(16)
-                        .build())
+                .storageConfig(config)
                 .aerospikeClient(aerospikeClient)
                 .enableDeDupe(true)
                 .farmId("FARM_ID")

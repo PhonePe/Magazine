@@ -83,15 +83,20 @@ Names keep their dots deliberately — Dropwizard's default convention would cam
 `magazine.aerospike.calls` into `magazineAerospikeCalls`, which would not match the names in this
 document.
 
-To publish somewhere else instead — Prometheus, OTLP — override `createMeterRegistry`. Whatever you
-return is attached globally, so storages still need no wiring:
+To publish somewhere else instead — Prometheus, OTLP — set `metricsEnabled: false` on the bundle so
+it does not attach its own Dropwizard bridge, then attach your own registry globally from your
+application's `run` (which Dropwizard calls after the bundle's, per the ordering above):
 
 ```java
 @Override
-protected MeterRegistry createMeterRegistry(MyConfig config, Environment environment) {
-    return new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+public void run(MyConfig config, Environment environment) {
+    Metrics.addRegistry(/*Add the registry*/);
+    // ... build storages as usual
 }
 ```
+
+Storages still need no wiring - they publish to whatever is attached to the global registry,
+regardless of who attached it.
 
 ## What is published
 

@@ -125,7 +125,7 @@ Registering `MagazineBundle` always enables the Magazine APIs. `dashboardEnabled
 | `metadataCacheSeconds` | `5` | Seconds to cache a magazine's shard metadata for; `0` disables caching. |
 | `metricsEnabled` | `true` | Publish Magazine's metrics through the application's metric registry, so they appear on the admin port. |
 
-`metricsEnabled` bridges Magazine's meters to `environment.metrics()` and attaches that bridge to Micrometer's global registry. Storages need no wiring — build them without a `meterRegistry` and their metrics land on the admin port alongside the rest of the service's. Override `createMeterRegistry(...)` to publish elsewhere. See [Metrics](concepts/metrics.md).
+`metricsEnabled` bridges Magazine's meters to `environment.metrics()` and attaches that bridge to Micrometer's global registry. Storages need no wiring — build them without a `meterRegistry` and their metrics land on the admin port alongside the rest of the service's. Set it `false` and attach your own registry globally instead to publish elsewhere. See [Metrics](concepts/metrics.md).
 
 `metadataCacheSeconds` throttles the per-shard fan-out behind `/metadata`. Rendering the dashboard costs one batch read per magazine that fans out to every shard, so an open dashboard — or anything polling `/metadata` on a timer — issues `magazines x shards` key reads per refresh against the same cluster serving production traffic. Caching collapses that to at most one fan-out per magazine per window. An unknown magazine is resolved before the cache is consulted, so it still returns `404` rather than being cached as a miss.
 

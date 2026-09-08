@@ -55,7 +55,7 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
                 getMagazineBundleConfiguration(configuration), "magazineBundle configuration");
         this.magazineManager = new MagazineManager(
                 Objects.requireNonNull(getClientId(configuration), "clientId"));
-        this.meterRegistry = resolveMeterRegistry(configuration, environment, bundleConfiguration);
+        this.meterRegistry = resolveMeterRegistry(environment, bundleConfiguration);
         final MagazineService service = new MagazineService(magazineManager,
                 environment.getObjectMapper(), bundleConfiguration.getMetadataCacheSeconds());
 
@@ -86,8 +86,7 @@ public abstract class MagazineBundle<T extends Configuration> implements Configu
      * {@code metricsEnabled: false} attaches nothing and hands back a private empty composite, so
      * opting out cannot be undone by someone else attaching a registry globally.
      */
-    private MeterRegistry resolveMeterRegistry(final T configuration,
-            final Environment environment,
+    private MeterRegistry resolveMeterRegistry(final Environment environment,
             final MagazineBundleConfiguration bundleConfiguration) {
         if (!bundleConfiguration.isMetricsEnabled()) {
             return new CompositeMeterRegistry();
