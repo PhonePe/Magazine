@@ -19,8 +19,11 @@ package com.phonepe.magazine.resources;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.phonepe.magazine.Magazine;
 import com.phonepe.magazine.MagazineManager;
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
+import com.phonepe.magazine.exception.ErrorCode;
+import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.request.PeekRequest;
 import com.phonepe.magazine.response.*;
 import com.phonepe.magazine.service.MagazineService;
@@ -38,6 +41,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +55,10 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(DropwizardExtensionsSupport.class)
 class MagazineResourceTest {
+
+    private static final Instant OLDEST = Instant.parse("2026-01-01T10:00:00Z");
+    private static final Instant MIDDLE = Instant.parse("2026-01-01T10:05:00Z");
+    private static final Instant NEWEST = Instant.parse("2026-01-01T10:10:00Z");
 
     private final Magazine<String> magazine = mockMagazine();
     private final MagazineManager magazineManager = mock(MagazineManager.class);
@@ -77,6 +85,144 @@ class MagazineResourceTest {
                 });
 
         assertEquals(List.of(new MagazineDescriptor("jobs")), response);
+        verifyNoDataOperations();
+    }
+
+    private void stubHistory() {
+        // SHARD_0 missed the oldest window - it may not have existed yet.
+        when(magazine.fireHistory()).thenReturn(Map.of(
+                "SHARD_1", List.of(new FireCheckpoint(512, NEWEST), new FireCheckpoint(500, MIDDLE),
+                        new FireCheckpoint(400, OLDEST)),
+                "SHARD_0", List.of(new FireCheckpoint(340, NEWEST), new FireCheckpoint(300, MIDDLE))));
+    }
+
+    private FireHistoryResponse history(final String shard) {
+        var target = resources.target("/magazine/v1/magazines/jobs/fire-history");
+        if (shard != null) {
+            target = target.queryParam("shard", shard);
+        }
+        return target.request().get(FireHistoryResponse.class);
+    }
+
+    @Test
+    void reportsRetainedHistoryAsOneRowPerWindowNewestFirst() {
+        stubHistory();
+
+        final FireHistoryResponse response = history(null);
+
+        assertTrue(response.enabled());
+        assertNull(response.shard(), "totals by default");
+        assertEquals(List.of("SHARD_0", "SHARD_1"), response.shards());
+        assertEquals(List.of(NEWEST, MIDDLE, OLDEST),
+                response.windows().stream().map(FireHistoryWindow::recordedAt).toList());
+        assertEquals(852, response.windows().get(0).firePointer(), "totalled across reporting shards");
+        assertEquals(2, response.windows().get(0).shardsReporting());
+        assertEquals(1, response.windows().get(2).shardsReporting());
+        verifyNoDataOperations();
+    }
+
+    /**
+     * The row count must not grow with shard count - a magazine may have hundreds of shards, and
+     * the payload is polled every 30 seconds.
+     */
+    @Test
+    void rowCountIsIndependentOfShardCount() {
+        final Instant window = Instant.parse("2026-01-01T10:00:00Z");
+        final Map<String, List<FireCheckpoint>> wide = new java.util.LinkedHashMap<>();
+        for (int shard = 0; shard < 256; shard++) {
+            wide.put("SHARD_" + shard, List.of(new FireCheckpoint(10, window)));
+        }
+        when(magazine.fireHistory()).thenReturn(wide);
+        when(magazine.getShards()).thenReturn(256);
+
+        final FireHistoryResponse response = history(null);
+
+        assertEquals(1, response.windows().size(), "one row per window, whatever the shard count");
+        assertEquals(2560, response.windows().get(0).firePointer());
+        assertEquals(256, response.span().shardsReporting());
+        assertEquals(256, response.span().shardsConfigured());
+    }
+
+    /**
+     * A shard that only appears in the newer window must not report its whole pointer as having
+     * been delivered in that window.
+     */
+    @Test
+    void deliveredCountsOnlyShardsPresentInBothWindows() {
+        stubHistory();
+
+        final List<FireHistoryWindow> windows = history(null).windows();
+
+        assertNull(windows.get(2).delivered(), "the oldest row has nothing to compare against");
+        assertEquals(100, windows.get(1).delivered(), "only SHARD_1 spans both, 500 - 400");
+        assertEquals(52, windows.get(0).delivered(), "both shards span, (512-500) + (340-300)");
+    }
+
+    @Test
+    void reportsHowFarBackHistoryReaches() {
+        stubHistory();
+
+        final FireHistorySpan span = history(null).span();
+
+        assertEquals(OLDEST, span.oldest());
+        assertEquals(NEWEST, span.newest());
+        assertEquals(3, span.windows());
+        assertEquals(2, span.shardsReporting());
+        assertEquals(4, span.shardsConfigured());
+    }
+
+    @Test
+    void drillsIntoASingleShard() {
+        stubHistory();
+
+        final FireHistoryResponse response = history("SHARD_0");
+
+        assertEquals("SHARD_0", response.shard());
+        assertEquals(List.of(NEWEST, MIDDLE),
+                response.windows().stream().map(FireHistoryWindow::recordedAt).toList(),
+                "only the windows that shard recorded");
+        assertEquals(340, response.windows().get(0).firePointer(), "that shard's pointer, not a total");
+        assertEquals(List.of("SHARD_0", "SHARD_1"), response.shards(), "the selector still lists every shard");
+    }
+
+    @Test
+    void rejectsAShardWithNoRecordedHistory() {
+        stubHistory();
+
+        try (Response response = resources.target("/magazine/v1/magazines/jobs/fire-history")
+                .queryParam("shard", "SHARD_3")
+                .request()
+                .get()) {
+            assertEquals(400, response.getStatus());
+        }
+    }
+
+    /**
+     * A magazine that does not record checkpoints is a configuration fact, not a failure. Surfacing
+     * it as a 500 would make an unconfigured dashboard look like a broken one.
+     */
+    @Test
+    void reportsFireHistoryAsDisabledRatherThanFailing() {
+        when(magazine.fireHistory()).thenThrow(MagazineExceptions.of(ErrorCode.NOT_ENABLED, "not enabled"));
+
+        final FireHistoryResponse response = history(null);
+
+        assertFalse(response.enabled());
+        assertTrue(response.windows().isEmpty());
+        assertNull(response.span());
+    }
+
+    /**
+     * Browsing history must never write to the magazine being inspected. firePointerBefore records
+     * a checkpoint as a side effect; fireHistory deliberately does not, and the console uses that.
+     */
+    @Test
+    void browsingHistoryDoesNotRecordAnything() {
+        when(magazine.fireHistory()).thenReturn(Map.of());
+
+        assertNull(history(null).span());
+
+        verify(magazine, never()).firePointerBefore(any());
         verifyNoDataOperations();
     }
 
@@ -274,7 +420,10 @@ class MagazineResourceTest {
                 ShardMetadata.class,
                 PeekRequest.class,
                 PeekResponse.class,
-                PeekedData.class)) {
+                PeekedData.class,
+                FireHistoryResponse.class,
+                FireHistoryWindow.class,
+                FireHistorySpan.class)) {
             for (Method method : type.getDeclaredMethods()) {
                 assertFalse(methods.contains(method.getName()), type + " exposes " + method.getName());
                 assertFalse(method.getReturnType().getName().contains("BaseMagazineStorage"));

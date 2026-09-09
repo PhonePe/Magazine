@@ -23,11 +23,19 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
 import com.aerospike.client.ResultCode;
+import com.aerospike.client.Value;
+import com.aerospike.client.cdt.MapOperation;
+import com.aerospike.client.cdt.MapOrder;
+import com.aerospike.client.cdt.MapPolicy;
+import com.aerospike.client.cdt.MapReturnType;
+import com.aerospike.client.cdt.MapWriteFlags;
 import com.aerospike.client.exp.Exp;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MetaData;
+import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeNaming;
@@ -36,12 +44,19 @@ import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.metrics.MagazineMetrics;
 import com.phonepe.magazine.metrics.StorageOperation;
+import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Reads and writes the per-shard metadata records: load/fire pointers and load/fire counters.
@@ -55,7 +70,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * copy, and {@link Key} construction runs a RIPEMD-160 digest. Rebuilding those per operation was
  * pure overhead on every round trip.
  */
+@Slf4j
 public final class MagazineMetadataStore {
+
+    /**
+     * {@code CREATE_ONLY | NO_FAIL} makes a second writer in the same window a server-side no-op
+     * rather than an error, which is what lets every process attempt the write independently.
+     */
+    private static final MapPolicy CHECKPOINT_MAP_POLICY = new MapPolicy(
+            MapOrder.KEY_ORDERED, MapWriteFlags.CREATE_ONLY | MapWriteFlags.NO_FAIL);
 
     /**
      * The claim's precondition: this shard still has an unconsumed slot. Absent bins read as zero,
@@ -74,20 +97,41 @@ public final class MagazineMetadataStore {
 
     private final WritePolicy claimPolicy;
     private final WritePolicy adjustPolicy;
+    private final WritePolicy checkpointPolicy;
+    private final boolean fireHistoryEnabled;
+    private final long fireHistoryWindowMillis;
+    private final int fireHistoryEntries;
     /** Bounded by the number of configured magazines. */
     private final Map<MagazineContext, MetadataKeys> keyCache = new ConcurrentHashMap<>();
+    /**
+     * Last checkpoint window written, per shard, so only one caller per window issues each write.
+     * Per shard rather than per magazine: a shard skipped because its record did not exist yet, or
+     * because its write failed, must be retried within the same window rather than sit out until
+     * the next one.
+     * <p>
+     * Keyed by context like {@link #keyCache}, because one store serves every magazine on a
+     * storage. Shard count is part of the context's equality, so the array can never outlive the
+     * shard count it was sized for.
+     */
+    private final Map<MagazineContext, AtomicLong[]> checkpointWindows = new ConcurrentHashMap<>();
 
     public MagazineMetadataStore(final IAerospikeClient client,
             final AerospikeRetryer retryerFactory,
             final MagazineMetrics metrics,
             final String namespace,
             final String metaSetName,
-            final int metaDataTtl) {
+            final int metaDataTtl,
+            final boolean fireHistoryEnabled,
+            final long fireHistoryWindowMillis,
+            final int fireHistoryEntries) {
         this.client = client;
         this.retryerFactory = retryerFactory;
         this.metrics = metrics;
         this.namespace = namespace;
         this.metaSetName = metaSetName;
+        this.fireHistoryEnabled = fireHistoryEnabled;
+        this.fireHistoryWindowMillis = fireHistoryWindowMillis;
+        this.fireHistoryEntries = fireHistoryEntries;
 
         this.claimPolicy = AerospikePolicies.writePolicy(client);
         this.claimPolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
@@ -99,6 +143,12 @@ public final class MagazineMetadataStore {
         this.adjustPolicy = AerospikePolicies.writePolicy(client);
         this.adjustPolicy.recordExistsAction = RecordExistsAction.UPDATE;
         this.adjustPolicy.expiration = metaDataTtl;
+
+        // UPDATE_ONLY: a checkpoint describes a shard that exists. Creating the record here would
+        // fabricate a pointer record for a shard that was never initialised.
+        this.checkpointPolicy = AerospikePolicies.writePolicy(client);
+        this.checkpointPolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
+        this.checkpointPolicy.expiration = metaDataTtl;
     }
 
     /**
@@ -214,6 +264,10 @@ public final class MagazineMetadataStore {
                 ? pointerRecords
                 : batchRead(context, keys(context).counterKeys(), StorageOperation.REFRESH_ACTIVE_SHARDS);
 
+        // The batch read above already holds every shard's fire pointer, so recording checkpoints
+        // here costs no additional read, and this cache refreshes asynchronously.
+        recordFireHistory(context, pointerRecords);
+
         final int[] active = new int[context.getShards()];
         int found = 0;
         for (int shard = 0; shard < context.getShards(); shard++) {
@@ -226,7 +280,163 @@ public final class MagazineMetadataStore {
                 active[found++] = shard;
             }
         }
-        return found == active.length ? active : java.util.Arrays.copyOf(active, found);
+        return found == active.length ? active : Arrays.copyOf(active, found);
+    }
+
+    /**
+     * Where each shard's fire pointer stood at {@code instant}.
+     * <p>
+     * Answers come from checkpoints recorded at or before {@code instant}, so a returned pointer is
+     * a lower bound: every slot at or below it was claimed by then. It may lag reality, never lead
+     * it.
+     *
+     * @return shard id to checkpoint. A shard is absent when no checkpoint is old enough yet.
+     * @throws com.phonepe.magazine.exception.MagazineException {@code NOT_ENABLED} when fire
+     *         history is disabled, {@code INVALID_REQUEST} when retained history does not reach
+     *         back to {@code instant}.
+     */
+    public Map<String, FireCheckpoint> firePointerBefore(final MagazineContext context, final Instant instant) {
+        if (!fireHistoryEnabled) {
+            throw MagazineExceptions.of(ErrorCode.NOT_ENABLED, String.format(
+                    ErrorMessage.FIRE_HISTORY_DISABLED, context.getMagazineIdentifier()));
+        }
+        final Record[] records = readFireHistory(context);
+
+        // Recorded before resolving, so a shard whose history cannot answer still advances: the
+        // throw below must not stop this magazine from ever accumulating usable history again.
+        recordFireHistory(context, records);
+
+        final Map<String, FireCheckpoint> checkpoints = new HashMap<>(capacityFor(context.getShards()));
+        for (int shard = 0; shard < context.getShards(); shard++) {
+            final int current = shard;
+            resolveCheckpoint(context, records[current], instant, current)
+                    .ifPresent(checkpoint -> checkpoints.put(context.shardId(current), checkpoint));
+        }
+        return checkpoints;
+    }
+
+    /**
+     * Every retained checkpoint, newest first
+     */
+    public Map<String, List<FireCheckpoint>> fireHistory(final MagazineContext context) {
+        if (!fireHistoryEnabled) {
+            throw MagazineExceptions.of(ErrorCode.NOT_ENABLED, String.format(
+                    ErrorMessage.FIRE_HISTORY_DISABLED, context.getMagazineIdentifier()));
+        }
+        final Record[] records = readFireHistory(context);
+        final Map<String, List<FireCheckpoint>> history = new HashMap<>(capacityFor(context.getShards()));
+        for (int shard = 0; shard < context.getShards(); shard++) {
+            final List<FireCheckpoint> checkpoints = readHistory(records[shard]).entrySet().stream()
+                    .map(entry -> new FireCheckpoint(entry.getValue(), Instant.ofEpochMilli(-entry.getKey())))
+                    .toList();
+            if (!checkpoints.isEmpty()) {
+                history.put(context.shardId(shard), checkpoints);
+            }
+        }
+        return history;
+    }
+
+    private Record[] readFireHistory(final MagazineContext context) {
+        return retryerFactory.call(() -> {
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.READ_FIRE_HISTORY);
+            return client.get(client.getBatchPolicyDefault(),
+                    keys(context).pointerKeys().toArray(new Key[0]),
+                    AerospikeConstants.getFireHistoryBins());
+        });
+    }
+
+    private Optional<FireCheckpoint> resolveCheckpoint(final MagazineContext context,
+            final Record record,
+            final Instant instant,
+            final int shard) {
+        final SortedMap<Long, Long> history = readHistory(record);
+        final long cutoff = instant.toEpochMilli();
+        for (Map.Entry<Long, Long> entry : history.entrySet()) {
+            final long windowStart = -entry.getKey();
+            if (windowStart <= cutoff) {
+                return Optional.of(new FireCheckpoint(entry.getValue(), Instant.ofEpochMilli(windowStart)));
+            }
+        }
+        // At capacity with nothing old enough means history that could have answered was evicted.
+        // Returning empty would be indistinguishable from "nothing to do" and would silently stop
+        // the caller from ever acting.
+        if (history.size() >= fireHistoryEntries) {
+            throw MagazineExceptions.invalidRequest(String.format(ErrorMessage.FIRE_HISTORY_TOO_SHORT,
+                    context.getMagazineIdentifier(), shard, instant,
+                    Instant.ofEpochMilli(-history.lastKey())));
+        }
+        return Optional.empty();
+    }
+
+    @SuppressWarnings("unchecked")
+    private SortedMap<Long, Long> readHistory(final Record record) {
+        final Object raw = Objects.isNull(record) ? null : record.getValue(AerospikeConstants.FIRE_HISTORY);
+        return raw instanceof Map ? new TreeMap<>((Map<Long, Long>) raw) : new TreeMap<>();
+    }
+
+    /**
+     * Records one checkpoint per shard, at most once per window per process.
+     * <p>
+     * Deliberately best-effort: a checkpoint improves the reader's precision but is never a
+     * correctness requirement, since a missed window leaves the previous checkpoint in place and
+     * that still states something true. Failing a cache refresh or a read because a checkpoint
+     * could not be written would turn a cosmetic loss into an outage.
+     * <p>
+     * Claimed per shard, and the claim is released again if the write fails, so a shard that had no
+     * record yet or whose write errored is retried on the next call rather than sitting the window
+     * out.
+     */
+    private void recordFireHistory(final MagazineContext context, final Record[] pointerRecords) {
+        if (!fireHistoryEnabled) {
+            return;
+        }
+        final long window = System.currentTimeMillis() / fireHistoryWindowMillis * fireHistoryWindowMillis;
+        final AtomicLong[] claims = checkpointWindows.computeIfAbsent(context, this::newClaims);
+        final List<Key> pointerKeys = keys(context).pointerKeys();
+        // Negated so the key-ordered map sorts newest-first and eviction is a single index range.
+        final Value windowKey = Value.get(-window);
+
+        for (int shard = 0; shard < context.getShards(); shard++) {
+            final Record pointers = pointerRecords[shard];
+            if (Objects.isNull(pointers) || !claim(claims[shard], window)) {
+                continue;
+            }
+            try {
+                writeCheckpoint(context, pointerKeys.get(shard), windowKey,
+                        pointers.getLong(AerospikeConstants.FIRE_POINTER));
+            } catch (Exception e) {
+                claims[shard].compareAndSet(window, Long.MIN_VALUE);
+                log.warn("Could not record fire history for magazine {} shard {} window {}.",
+                        context.getMagazineIdentifier(), shard, window, e);
+            }
+        }
+    }
+
+    private void writeCheckpoint(final MagazineContext context, final Key key, final Value windowKey,
+            final long firePointer) {
+        metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.WRITE_FIRE_HISTORY);
+        client.operate(checkpointPolicy, key,
+                // CREATE_ONLY|NO_FAIL: the first writer in a window wins and every other process is
+                // a server-side no-op. Every writer's value is a lower bound, so whichever wins
+                // recorded the most conservative pointer observed for that window.
+                MapOperation.put(CHECKPOINT_MAP_POLICY, AerospikeConstants.FIRE_HISTORY,
+                        windowKey, Value.get(firePointer)),
+                // Keep the newest N by count, not by age: an age cutoff computed from the clock
+                // would discard the whole map on the first write after an idle period longer than
+                // the span, blinding readers even though those checkpoints were still usable.
+                MapOperation.removeByIndexRange(AerospikeConstants.FIRE_HISTORY,
+                        fireHistoryEntries, MapReturnType.NONE));
+    }
+
+    private static boolean claim(final AtomicLong claimed, final long window) {
+        final long previous = claimed.get();
+        return previous < window && claimed.compareAndSet(previous, window);
+    }
+
+    private AtomicLong[] newClaims(final MagazineContext context) {
+        final AtomicLong[] claims = new AtomicLong[context.getShards()];
+        Arrays.setAll(claims, index -> new AtomicLong(Long.MIN_VALUE));
+        return claims;
     }
 
     /**

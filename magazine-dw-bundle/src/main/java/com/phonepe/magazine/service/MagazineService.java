@@ -21,9 +21,15 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.phonepe.magazine.Magazine;
 import com.phonepe.magazine.MagazineManager;
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
+import com.phonepe.magazine.exception.ErrorCode;
+import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.request.PeekRequest;
+import com.phonepe.magazine.response.FireHistoryResponse;
+import com.phonepe.magazine.response.FireHistorySpan;
+import com.phonepe.magazine.response.FireHistoryWindow;
 import com.phonepe.magazine.response.MagazineDescriptor;
 import com.phonepe.magazine.response.MagazineMetadataResponse;
 import com.phonepe.magazine.response.PeekResponse;
@@ -32,6 +38,8 @@ import com.phonepe.magazine.response.ShardMetadata;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -39,6 +47,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 public final class MagazineService {
 
@@ -93,6 +103,93 @@ public final class MagazineService {
                 identifier,
                 Collections.unmodifiableMap(shards),
                 totalMetadata(shards.values()));
+    }
+
+    /**
+     * Retained delivery history, reduced to one row per checkpoint window, newest first.
+     * <p>
+     * The whole retained record rather than an answer about one moment: it is bounded by
+     * configuration, needs no input from the operator, and shows both how delivery progressed and
+     * how far back the magazine can be asked about at all.
+     *
+     * @param shard a single shard to report on, or null for totals across every shard. Shard count
+     *              is unbounded, so the per-shard series is fetched one shard at a time rather than
+     *              shipped as a grid.
+     */
+    public FireHistoryResponse fireHistory(final String identifier, final String shard) {
+        final Magazine<?> magazine = magazine(identifier);
+        final Map<String, List<FireCheckpoint>> history;
+        try {
+            history = magazine.fireHistory();
+        } catch (MagazineException e) {
+            if (e.getErrorCode() == ErrorCode.NOT_ENABLED) {
+                return new FireHistoryResponse(identifier, false, List.of(), shard, null, List.of());
+            }
+            throw e;
+        }
+
+        final List<String> shards = history.keySet().stream()
+                .sorted(MagazineService::compareShardIds)
+                .toList();
+        if (Objects.nonNull(shard) && !history.containsKey(shard)) {
+            throw new BadRequestException("No recorded history for shard: " + shard);
+        }
+        final Map<String, List<FireCheckpoint>> selected = Objects.isNull(shard)
+                ? history
+                : Map.of(shard, history.get(shard));
+
+        // Newest first, so the window keys sort descending.
+        final SortedMap<Instant, Map<String, Long>> pointers = new TreeMap<>(Comparator.reverseOrder());
+        selected.forEach((shardId, checkpoints) -> checkpoints.forEach(checkpoint -> pointers
+                .computeIfAbsent(checkpoint.recordedAt(), key -> new LinkedHashMap<>())
+                .put(shardId, checkpoint.firePointer())));
+
+        // Deltas need the older neighbour, so walk oldest first while filling newest first.
+        final Instant now = Instant.now();
+        final List<Map.Entry<Instant, Map<String, Long>>> ordered = new ArrayList<>(pointers.entrySet());
+        final FireHistoryWindow[] windows = new FireHistoryWindow[ordered.size()];
+        Map<String, Long> older = null;
+        for (int index = ordered.size() - 1; index >= 0; index--) {
+            final Map.Entry<Instant, Map<String, Long>> entry = ordered.get(index);
+            windows[index] = toWindow(entry.getKey(), entry.getValue(), older, now);
+            older = entry.getValue();
+        }
+        return new FireHistoryResponse(identifier, true, shards, shard,
+                span(pointers, shards, magazine.getShards(), now), List.of(windows));
+    }
+
+    private static FireHistoryWindow toWindow(final Instant recordedAt,
+            final Map<String, Long> pointers,
+            final Map<String, Long> older,
+            final Instant now) {
+        long total = 0;
+        long delivered = 0;
+        boolean comparable = false;
+        for (Map.Entry<String, Long> entry : pointers.entrySet()) {
+            total += entry.getValue();
+            // Only shards present in both windows contribute. One that appeared in between would
+            // otherwise report its entire pointer as having been delivered in this window.
+            final Long previous = Objects.isNull(older) ? null : older.get(entry.getKey());
+            if (Objects.nonNull(previous)) {
+                delivered += entry.getValue() - previous;
+                comparable = true;
+            }
+        }
+        return new FireHistoryWindow(recordedAt, Duration.between(recordedAt, now).getSeconds(),
+                pointers.size(), total, comparable ? delivered : null);
+    }
+
+    private static FireHistorySpan span(final SortedMap<Instant, Map<String, Long>> pointers,
+            final List<String> shards,
+            final int shardsConfigured,
+            final Instant now) {
+        if (pointers.isEmpty()) {
+            return null;
+        }
+        final Instant newest = pointers.firstKey();
+        final Instant oldest = pointers.lastKey();
+        return new FireHistorySpan(oldest, newest, Duration.between(oldest, now).getSeconds(),
+                pointers.size(), shards.size(), shardsConfigured);
     }
 
     public PeekResponse peek(final String identifier, final PeekRequest request) {

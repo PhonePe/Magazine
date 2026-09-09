@@ -30,6 +30,10 @@ public final class MagazineExceptions {
         return of(ErrorCode.INVALID_CONFIGURATION, message);
     }
 
+    public static MagazineException invalidRequest(final String message) {
+        return of(ErrorCode.INVALID_REQUEST, message);
+    }
+
     public static MagazineException invalidShards(final String message) {
         return of(ErrorCode.INVALID_SHARDS, message);
     }

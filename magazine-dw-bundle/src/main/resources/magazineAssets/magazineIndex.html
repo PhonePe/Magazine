@@ -12,9 +12,10 @@
   <div id="last-updated" class="last-updated" aria-live="polite">Waiting for metadata</div>
 </header>
 <main>
-  <aside class="panel"><h2>Configured magazines</h2><nav id="magazines"><div class="empty">Loading...</div></nav></aside>
+  <aside class="panel"><h2>Configured magazines</h2><input id="magazine-filter" class="filter" type="search" placeholder="Filter magazines" aria-label="Filter magazines" autocomplete="off"><nav id="magazines"><div class="empty">Loading...</div></nav></aside>
   <section>
     <div class="panel" id="metadata" aria-live="polite"><div class="empty">Select a magazine to inspect metadata.</div></div>
+    <div class="panel" id="history" aria-live="polite"><div class="empty">Select a magazine to inspect its delivery history.</div></div>
     <div class="panel peek-panel">
       <h2>Non-consuming peek</h2>
       <form class="peek" id="peek-form">
@@ -31,12 +32,14 @@
   const api = `${dashboardPath}/magazine/v1/magazines`;
   let selected = null;
   let selectionVersion = 0;
+  let historyShard = '';
   const esc = value => String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
   async function json(url, options) { const response=await fetch(url,options); if(!response.ok) throw new Error(`${response.status} ${await response.text()}`); return response.json(); }
   const number = value => Number(value).toLocaleString();
   async function choose(identifier, button) {
     const version=++selectionVersion; selected=identifier; document.querySelectorAll('nav button').forEach(item=>item.classList.remove('active')); button.classList.add('active'); document.querySelector('#peek').disabled=false; document.querySelector('#result').className='peek-result empty'; document.querySelector('#result').textContent='Enter a shard and pointer to inspect one record.';
-    await refreshMetadata(identifier, version);
+    historyShard='';
+    await Promise.all([refreshMetadata(identifier, version), refreshHistory(identifier, version)]);
   }
   async function refreshMetadata(identifier, version) {
     try { const value=await json(`${api}/${encodeURIComponent(identifier)}/metadata`); if(version===selectionVersion){renderMetadata(value);document.querySelector('#last-updated').textContent=`Updated ${new Date().toLocaleTimeString()} · refreshes every 30s`;} } catch(error) { if(version===selectionVersion)document.querySelector('#metadata').innerHTML=`<pre>${esc(error.message)}</pre>`; }
@@ -46,6 +49,27 @@
     const rows=Object.entries(value.shards).map(([shard,data])=>`<tr><td>${esc(shard)}</td><td>${number(data.loadCounter)}</td><td>${number(data.fireCounter)}</td><td>${number(data.loadPointer)}</td><td>${number(data.firePointer)}</td><td>${number(data.pending)}</td></tr>`).join('');
     document.querySelector('#metadata').innerHTML=`<h2>${esc(value.identifier)}</h2><div class="metrics">${[['load counter','loadCounter'],['fire counter','fireCounter'],['pending','pending']].map(metric).join('')}</div><div class="table-wrap"><table><thead><tr><th>Shard</th><th>Load counter</th><th>Fire counter</th><th>Load pointer</th><th>Fire pointer</th><th>Pending</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
+  async function refreshHistory(identifier, version) {
+    const query=historyShard?`?shard=${encodeURIComponent(historyShard)}`:'';
+    try { const value=await json(`${api}/${encodeURIComponent(identifier)}/fire-history${query}`); if(version===selectionVersion)renderHistory(value); } catch(error) { if(version===selectionVersion)document.querySelector('#history').innerHTML=`<h2>Delivery history</h2><pre>${esc(error.message)}</pre>`; }
+  }
+  const duration=seconds=>seconds<60?`${number(seconds)}s`:seconds<3600?`${number(Math.floor(seconds/60))}m ${number(seconds%60)}s`:`${number(Math.floor(seconds/3600))}h ${number(Math.floor(seconds%3600/60))}m`;
+  function renderHistory(value) {
+    const panel=document.querySelector('#history');
+    if(!value.enabled){panel.innerHTML=`<h2>Delivery history</h2><div class="empty">Fire history is not enabled for this magazine. Set fireHistoryEnabled on the storage configuration to record where each shard's fire pointer stood over time.</div>`;return;}
+    if(!value.windows.length){panel.innerHTML='<h2>Delivery history</h2><div class="empty">No checkpoints recorded yet. Normal for a magazine that has not been consumed from.</div>';return;}
+    const span=value.span;
+    const scope=value.shard?esc(value.shard):`all ${number(span.shardsReporting)} recording shards`;
+    const options=[`<option value="">All shards (totals)</option>`].concat(value.shards.map(shard=>`<option value="${esc(shard)}"${shard===value.shard?' selected':''}>${esc(shard)}</option>`)).join('');
+    const summary=[
+      [`${number(span.windows)}`,'windows retained'],
+      [duration(span.spanSeconds),'reaches back'],
+      [`${number(span.shardsReporting)} / ${number(span.shardsConfigured)}`,'shards recording']
+    ].map(([value,label])=>`<div class="metric"><strong>${esc(value)}</strong><span>${label}</span></div>`).join('');
+    const rows=value.windows.map(window=>`<tr><td>${esc(new Date(window.recordedAt).toLocaleString())}</td><td>${esc(duration(window.ageSeconds))}</td>${value.shard?'':`<td>${number(window.shardsReporting)}</td>`}<td>${number(window.firePointer)}</td><td>${window.delivered===null?'-':number(window.delivered)}</td></tr>`).join('');
+    panel.innerHTML=`<h2>Delivery history</h2><div class="metrics history-metrics">${summary}</div><div class="scope"><label for="history-shard">Showing</label><select id="history-shard">${options}</select></div><p class="note">Fire pointer at each recorded window for ${scope}, newest first. Every slot at or below a pointer had been handed to a consumer by that time. A redrive asking about anything older than the oldest row gets an error rather than an answer.</p><div class="table-wrap"><table><thead><tr><th>Recorded at</th><th>Age</th>${value.shard?'':'<th>Shards</th>'}<th>Fire pointer</th><th>Delivered</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    document.querySelector('#history-shard').addEventListener('change',event=>{historyShard=event.target.value;refreshHistory(selected,selectionVersion);});
+  }
   function renderPeek(value) {
     const result=document.querySelector('#result');
     if (!value.data.length) { result.className='peek-result empty'; result.textContent='No record found at this shard and pointer.'; return; }
@@ -54,8 +78,9 @@
   }
   document.querySelector('#peek-form').addEventListener('submit',async event=>{ event.preventDefault(); const result=document.querySelector('#result'); const shard=document.querySelector('#peek-shard').value; const pointer=document.querySelector('#peek-pointer').value; if(!/^\d+$/.test(shard)||!/^\d+$/.test(pointer)||Number(pointer)<1){result.className='peek-result error';result.textContent='Enter a non-negative shard and positive pointer.';return;}
     if(!Number.isSafeInteger(Number(pointer))){result.className='peek-result error';result.textContent='Pointer is too large to represent exactly in the browser.';return;} try { renderPeek(await json(`${api}/${encodeURIComponent(selected)}/peek`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pointers:{[shard]:[Number(pointer)]}})})); } catch(error) { result.className='peek-result error'; result.textContent=error.message; } });
-  json(api).then(items=>{ const nav=document.querySelector('#magazines'); if(!items.length){nav.innerHTML='<div class="empty">No magazines configured.</div>';return;} nav.innerHTML=''; items.forEach((item,index)=>{const button=document.createElement('button');button.textContent=item.identifier;button.addEventListener('click',()=>choose(item.identifier,button));nav.appendChild(button);if(index===0)choose(item.identifier,button);}); }).catch(error=>document.querySelector('#magazines').innerHTML=`<pre>${esc(error.message)}</pre>`);
-  setInterval(()=>{if(selected)refreshMetadata(selected,selectionVersion);},30000);
+  json(api).then(items=>{ const nav=document.querySelector('#magazines'); if(!items.length){nav.innerHTML='<div class="empty">No magazines configured.</div>';return;} nav.innerHTML=''; items.forEach((item,index)=>{const button=document.createElement('button');button.textContent=item.identifier;button.addEventListener('click',()=>choose(item.identifier,button));nav.appendChild(button);if(index===0)choose(item.identifier,button);}); const none=document.createElement('div');none.className='empty no-match';none.textContent='No magazine matches that filter.';none.hidden=true;nav.appendChild(none); }).catch(error=>document.querySelector('#magazines').innerHTML=`<pre>${esc(error.message)}</pre>`);
+  document.querySelector('#magazine-filter').addEventListener('input',event=>{ const term=event.target.value.trim().toLowerCase(); document.querySelectorAll('#magazines button').forEach(button=>{button.hidden=term.length>0&&!button.textContent.toLowerCase().includes(term);}); const none=document.querySelector('#magazines .no-match'); if(none)none.hidden=[...document.querySelectorAll('#magazines button')].some(button=>!button.hidden); });
+  setInterval(()=>{if(selected){refreshMetadata(selected,selectionVersion);refreshHistory(selected,selectionVersion);}},30000);
 </script>
 </body>
 </html>

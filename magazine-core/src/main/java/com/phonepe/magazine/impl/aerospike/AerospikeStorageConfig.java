@@ -78,4 +78,28 @@ public class AerospikeStorageConfig {
      */
     @Builder.Default
     private boolean metricsEnabled = true;
+    /**
+     * Whether to record delivery-time checkpoints, which is what {@code firePointerBefore} reads.
+     * Off by default: the checkpoint map rides the pointer record, and every claim rewrites that
+     * record, so a caller that never asks should not pay.
+     */
+    @Builder.Default
+    private boolean fireHistoryEnabled = false;
+    /**
+     * Seconds covered by one checkpoint, and so the resolution of every answer
+     * {@code firePointerBefore} can give. One entry per shard per window, whatever the throughput.
+     */
+    @Builder.Default
+    private int fireHistoryWindowSeconds = AerospikeConstants.DEFAULT_FIRE_HISTORY_WINDOW_SECONDS;
+    /**
+     * Checkpoints retained per shard. Eviction is by count rather than age, so an intermittently
+     * used magazine reaches further back than {@code window x entries} instead of having its
+     * history wiped by the first write after an idle period.
+     */
+    @Builder.Default
+    private int fireHistoryEntries = AerospikeConstants.DEFAULT_FIRE_HISTORY_ENTRIES;
+
+    public long fireHistoryWindowMillis() {
+        return fireHistoryWindowSeconds * 1_000L;
+    }
 }

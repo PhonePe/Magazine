@@ -16,6 +16,7 @@
 
 package com.phonepe.magazine.core;
 
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MagazineScope;
@@ -23,6 +24,8 @@ import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.entity.StorageType;
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineExceptions;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -140,6 +143,32 @@ public abstract class BaseMagazineStorage<T> {
             final MagazineContext context,
             final Map<Integer, Set<Long>> shardPointersMap
     );
+
+    /**
+     * Where each shard's fire pointer stood at a given moment.
+     * <p>
+     * Optional. Backends that cannot answer must raise {@code NOT_ENABLED} rather than guess.
+     *
+     * @param context The magazine operation context.
+     * @param instant The moment to report on.
+     * @return shard id to checkpoint, keyed as {@link #getMetaData} is. A shard is absent when
+     *         nothing is known about it that far back, which is normal for a young magazine.
+     */
+    public abstract Map<String, FireCheckpoint> firePointerBefore(
+            final MagazineContext context,
+            final Instant instant
+    );
+
+    /**
+     * Every retained checkpoint, newest first. A pure read: unlike {@link #firePointerBefore} it
+     * records nothing.
+     * <p>
+     * Optional. Backends that cannot answer must raise {@code NOT_ENABLED} rather than guess.
+     *
+     * @param context The magazine operation context.
+     * @return shard id to its checkpoints, newest first, keyed as {@link #getMetaData} is.
+     */
+    public abstract Map<String, List<FireCheckpoint>> fireHistory(final MagazineContext context);
 
     private static void validate(final StorageType type,
             final int recordTtl,

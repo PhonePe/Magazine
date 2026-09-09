@@ -47,7 +47,28 @@ final class AerospikeStorageValidator {
             throw MagazineExceptions.invalidConfiguration(
                     "Active shard refresh seconds must be at least 1.");
         }
+        validateFireHistory(storageConfig);
         return storageConfig;
+    }
+
+    /**
+     * The checkpoint map rides the pointer record, which every claim rewrites, so both bounds exist
+     * to keep that record small.
+     */
+    private static void validateFireHistory(final AerospikeStorageConfig storageConfig) {
+        if (!storageConfig.isFireHistoryEnabled()) {
+            return;
+        }
+        if (storageConfig.getFireHistoryWindowSeconds() < 1) {
+            throw MagazineExceptions.invalidConfiguration(
+                    "Fire history window seconds must be at least 1.");
+        }
+        if (storageConfig.getFireHistoryEntries() < 2
+                || storageConfig.getFireHistoryEntries() > AerospikeConstants.MAX_FIRE_HISTORY_ENTRIES) {
+            throw MagazineExceptions.invalidConfiguration(String.format(
+                    "Fire history entries must be between 2 and %d.",
+                    AerospikeConstants.MAX_FIRE_HISTORY_ENTRIES));
+        }
     }
 
     static void validateStorage(final IAerospikeClient aerospikeClient,
