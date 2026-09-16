@@ -36,6 +36,8 @@ Magazine<T> magazine = Magazine.<T>builder()
 | `getShards()` | `int` | This magazine's **persisted** shard count (from the resolved `MagazineContext`), not the shard count configured on the storage. |
 | `peek(Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read specific records without consuming. |
 | `getMagazineIdentifier()` | `String` | The identifier this magazine is bound to. |
+| `firePointerBefore(Instant instant)` | `Map<String, FireCheckpoint>` | Where each shard's fire pointer stood at `instant`. Requires `fireHistoryEnabled`. A shard is **absent** when no checkpoint reaches back that far — treat that as "do nothing here", not "empty". Throws `NOT_ENABLED`, or `INVALID_REQUEST` when the retained history no longer spans `instant`. |
+| `fireHistory()` | `Map<String, List<FireCheckpoint>>` | Every retained checkpoint per shard, newest first. Requires `fireHistoryEnabled`. |
 
 !!! warning "`fire()` is at-most-once"
     A record is claimed by a guarded atomic increment of the fire pointer. If the client times out after the server applied the claim, the pointer has advanced and that record will never be delivered. `fire()` throws `NOTHING_TO_FIRE` when the magazine is drained and `RETRIES_EXHAUSTED` when it gave up while skipping pointer holes — the latter does **not** mean the queue is empty. See [Delivery Semantics](delivery-semantics.md).

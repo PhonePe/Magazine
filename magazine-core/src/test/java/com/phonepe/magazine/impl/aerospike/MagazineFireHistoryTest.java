@@ -190,6 +190,7 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         final Magazine<String> magazine = magazine("HIST_BURST", "HIST_BURST_SET", true, 1, 8);
         loadAndFire(magazine, 3);
         magazine.firePointerBefore(Instant.now());
+        final long newestBefore = newestWindowKey(magazine);
 
         Thread.sleep(1_100);
         // No load, no fire: the magazine is idle. Reading alone must still move history forward,
@@ -197,8 +198,13 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         // checkpoint predating the burst and its orphans would never become visible.
         magazine.firePointerBefore(Instant.now());
 
-        assertEquals(2, history(magazine, 0).size(),
-                "the read should have recorded the new window by itself");
+        // The property, not a count. The active-shard refresh records on its own schedule, so how
+        // many windows exist by this point is not something the test controls - under load the
+        // preceding loadAndFire can contribute one of its own. What the read must guarantee is that
+        // a window strictly newer than anything present beforehand now exists.
+        assertTrue(newestWindowKey(magazine) < newestBefore,
+                "the read should have recorded a newer window by itself; keys are negated window "
+                        + "timestamps, so newest sorts lowest");
     }
 
     @Test
@@ -392,8 +398,17 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         return found;
     }
 
-    private int totalCheckpoints(final Magazine<String> magazine, final int shards) {
-        int total = 0;
+    /**
+     * Keys are negated window timestamps on a KEY_ORDERED map, so the newest window is the lowest
+     * key. Returns 0 when nothing has been recorded, which no real window can equal.
+     */
+    private long newestWindowKey(final Magazine<String> magazine) {
+        final Map<Long, Long> history = history(magazine, 0);
+        assertNotNull(history, "expected a checkpoint map on the pointer record");
+        return history.keySet().stream().mapToLong(Long::longValue).min().orElse(0L);
+    }
+
+    private int totalCheckpoints(final Magazine<String> magazine, final int shards) {        int total = 0;
         for (int shard = 0; shard < shards; shard++) {
             final Map<Long, Long> history = history(magazine, shard);
             total += history == null ? 0 : history.size();
