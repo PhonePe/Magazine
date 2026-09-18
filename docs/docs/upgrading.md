@@ -122,6 +122,8 @@ classpath. Declare it directly if you depended on it transitively.
   [metrics](concepts/metrics.md).
 - `activeShardRefreshSeconds` — tune shard-discovery read load.
 - `metadataCacheSeconds` on the bundle — throttle dashboard fan-out.
+- **`Magazine.deleteAll(Collection<MagazineData<T>>)`** — retire a whole batch in one round trip.
+  Optional for callers; **mandatory for anyone implementing `BaseMagazineStorage`**, see section 4.
 
 ## Checklist
 
@@ -133,3 +135,4 @@ classpath. Declare it directly if you depended on it transitively.
 5. Register auth for peek, or accept it returning 403.
 6. Update anything parsing the dashboard JSON for numbers-as-strings.
 7. Declare Guava or DLM directly if you were getting them transitively.
+8. If you implement `BaseMagazineStorage`, implement the new abstract `deleteAll`.

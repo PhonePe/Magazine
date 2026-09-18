@@ -95,7 +95,7 @@ graph TD
 | Component | Role |
 |-----------|------|
 | **`MagazineManager`** | Facade for managing multiple `Magazine` instances by identifier. |
-| **`Magazine<T>`** | Type-safe wrapper providing `load`, `fire`, `reload`, `delete`, `peek`, `getMetaData`, `getShards`. |
+| **`Magazine<T>`** | Type-safe wrapper providing `load`, `fire`, `reload`, `delete`, `deleteAll`, `peek`, `getMetaData`, `getShards`. |
 | **`BaseMagazineStorage<T>`** | Abstract storage contract; implemented by each backend. `initialize(String)` resolves a `MagazineContext`. |
 | **`MagazineContext`** | Immutable per-magazine resolved configuration (identifier, schema version, shard count) threaded through every storage call. |
 | **`AerospikeStorage<T>`** | Production-ready Aerospike backend with sharding, bounded retries, and lock-free de-duplication. |

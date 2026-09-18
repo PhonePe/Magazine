@@ -10,6 +10,7 @@ Every `Magazine<T>` instance exposes these operations:
 | `fire()` | Dequeue and return the next item. |
 | `reload(T data)` | Re-enqueue data (decrements fire counter instead of incrementing load counter). |
 | `delete(MagazineData<T>)` | Remove a specific record from the backend. |
+| `deleteAll(Collection<MagazineData<T>>)` | Remove a batch of records in one round trip. |
 | `getMetaData()` | Retrieve per-shard counters and pointers. |
 | `getShards()` | This magazine's persisted shard count. |
 | `peek(Map<Integer, Set<Long>>)` | Read specific shard/pointer records without consuming. |
@@ -102,6 +103,10 @@ magazine.delete(fired);
 
 !!! warning
     `delete()` throws a `MagazineException` with `INVALID_CONFIGURATION` if the supplied `MagazineData` belongs to a different magazine than the one you call it on. Do not route records returned by one magazine into another's `delete()`.
+
+    `deleteAll()` applies the same rule to every record in the batch, and validates the whole batch
+    before deleting any of it - so a batch carrying one foreign record is rejected without
+    retiring the records it did own.
 
 ## Peeking Data
 

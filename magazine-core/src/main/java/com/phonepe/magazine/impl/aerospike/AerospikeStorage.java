@@ -41,6 +41,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -217,16 +218,28 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Override
     public void delete(final MagazineContext context, final MagazineData<T> magazineData) {
-        if (Objects.isNull(magazineData)) {
-            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
-        }
-        if (!context.getMagazineIdentifier().equals(magazineData.getMagazineIdentifier())) {
-            throw MagazineExceptions.invalidConfiguration("Magazine data belongs to a different magazine.");
-        }
+        validateOwnership(context, magazineData);
         try {
             dataStore.delete(context, magazineData);
         } catch (Exception e) {
             throw mapFailure(e, ErrorMessage.ERROR_DELETING_DATA, context);
+        }
+    }
+
+    /**
+     * Every record is validated before any is deleted, so a batch carrying one foreign record is
+     * rejected whole rather than half applied.
+     */
+    @Override
+    public void deleteAll(final MagazineContext context, final Collection<MagazineData<T>> magazineData) {
+        if (Objects.isNull(magazineData)) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
+        }
+        magazineData.forEach(data -> validateOwnership(context, data));
+        try {
+            dataStore.deleteAll(context, magazineData);
+        } catch (Exception e) {
+            throw mapFailure(e, ErrorMessage.ERROR_BATCH_DELETING_DATA, context);
         }
     }
 
@@ -365,6 +378,15 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private void validateDataType(final T data) {
         if (!clazz.isInstance(data)) {
             throw MagazineExceptions.dataTypeMismatch("Mismatch in data type of magazine and requested data.");
+        }
+    }
+
+    private void validateOwnership(final MagazineContext context, final MagazineData<T> magazineData) {
+        if (Objects.isNull(magazineData)) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
+        }
+        if (!context.getMagazineIdentifier().equals(magazineData.getMagazineIdentifier())) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data belongs to a different magazine.");
         }
     }
 

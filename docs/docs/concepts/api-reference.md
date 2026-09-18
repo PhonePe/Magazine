@@ -32,6 +32,7 @@ Magazine<T> magazine = Magazine.<T>builder()
 | `fire()` | `MagazineData<T>` | Dequeue and return the next item. **At-most-once** — see [Delivery Semantics](delivery-semantics.md). |
 | `reload(T data)` | `boolean` | Re-enqueue data (decrements fire counter, not increment load counter). |
 | `delete(MagazineData<T> magazineData)` | `void` | Delete a specific record from the backend. |
+| `deleteAll(Collection<MagazineData<T>> magazineData)` | `void` | Delete a batch of records |
 | `getMetaData()` | `Map<String, MetaData>` | Per-shard metadata (counters and pointers). |
 | `getShards()` | `int` | This magazine's **persisted** shard count (from the resolved `MagazineContext`), not the shard count configured on the storage. |
 | `peek(Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read specific records without consuming. |
@@ -99,6 +100,7 @@ There is no `shards` constructor parameter — shard count is a property of the 
 | `fire(MagazineContext context)` | `MagazineData<T>` | Consume the next item from the context's magazine. |
 | `getMetaData(MagazineContext context)` | `Map<String, MetaData>` | Read per-shard metadata. |
 | `delete(MagazineContext context, MagazineData<T> magazineData)` | `void` | Delete a specific record. |
+| `deleteAll(MagazineContext context, Collection<MagazineData<T>> magazineData)` | `void` | Delete a batch. **Abstract — every backend must implement it.** Batch it into one round trip if the backend can; otherwise loop `delete`. |
 | `peek(MagazineContext context, Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read without consuming. |
 
 Every method except `initialize` takes the `MagazineContext` as its first argument.

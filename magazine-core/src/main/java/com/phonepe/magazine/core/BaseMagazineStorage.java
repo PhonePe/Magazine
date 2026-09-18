@@ -25,6 +25,7 @@ import com.phonepe.magazine.entity.StorageType;
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -131,6 +132,14 @@ public abstract class BaseMagazineStorage<T> {
      * @param magazineData The MagazineData to be deleted.
      */
     public abstract void delete(final MagazineContext context, final MagazineData<T> magazineData);
+
+    /**
+     * Delete a batch of records that have all been handled.
+     *
+     * @param context The magazine operation context.
+     * @param magazineData The records to delete. An empty collection is a no-op.
+     */
+    public abstract void deleteAll(final MagazineContext context, final Collection<MagazineData<T>> magazineData);
 
     /**
      * Peek data from specific shards and pointers within the magazine.

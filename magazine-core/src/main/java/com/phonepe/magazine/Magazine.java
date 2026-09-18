@@ -23,6 +23,7 @@ import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -100,6 +101,19 @@ public class Magazine<T> {
      */
     public void delete(final MagazineData<T> magazineData) {
         baseMagazineStorage.delete(context, magazineData);
+    }
+
+    /**
+     * Delete a batch of records that have all been handled, in one round trip where the backend
+     * supports it.
+     *
+     * @param magazineData The MagazineData records to be deleted. Empty is a no-op.
+     * @throws com.phonepe.magazine.exception.MagazineException with {@code INVALID_CONFIGURATION}
+     *         if any record belongs to a different magazine. The batch is validated before any of
+     *         it is deleted.
+     */
+    public void deleteAll(final Collection<MagazineData<T>> magazineData) {
+        baseMagazineStorage.deleteAll(context, magazineData);
     }
 
     /**

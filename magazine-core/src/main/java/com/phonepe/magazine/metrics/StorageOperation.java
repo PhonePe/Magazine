@@ -51,6 +51,7 @@ public enum StorageOperation {
     WRITE_DATA("write_data"),
     DELETE_DATA("delete_data"),
     BATCH_READ_DATA("batch_read_data"),
+    BATCH_DELETE_DATA("batch_delete_data"),
     /** The checkpoint write; one per shard per window, not one per claim. */
     WRITE_FIRE_HISTORY("write_fire_history"),
     /** The batch read behind {@code firePointerBefore}. */

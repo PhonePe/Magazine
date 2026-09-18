@@ -32,6 +32,8 @@ public final class ErrorMessage {
     public static final String ERROR_READING_COUNTERS = "Error reading counters [magazineIdentifier = %s]";
     public static final String NO_DATA_TO_FIRE = "No data to fire [magazineIdentifier = %s]";
     public static final String ERROR_DELETING_DATA = "Error deleting data [magazineIdentifier = %s]";
+    public static final String ERROR_BATCH_DELETING_DATA =
+            "Error batch deleting data [magazineIdentifier = %s]";
     public static final String ERROR_INITIALIZING_MAGAZINE =
             "Error initializing magazine [magazineIdentifier = %s]";
     public static final String ERROR_PEEKING_DATA = "Error peeking data [magazineIdentifier = %s]";
