@@ -17,11 +17,15 @@
 package com.phonepe.magazine.impl.aerospike.store;
 
 import com.aerospike.client.BatchRead;
+import com.aerospike.client.BatchRecord;
+import com.aerospike.client.BatchResults;
 import com.aerospike.client.Bin;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.ResultCode;
+import com.aerospike.client.policy.BatchDeletePolicy;
+import com.aerospike.client.policy.BatchPolicy;
 import com.aerospike.client.policy.WritePolicy;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineData;
@@ -34,6 +38,7 @@ import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.metrics.MagazineMetrics;
 import com.phonepe.magazine.metrics.StorageOperation;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +62,8 @@ public final class MagazineDataStore<T> {
     private final Class<T> clazz;
     private final WritePolicy writePolicy;
     private final WritePolicy deletePolicy;
+    private final BatchPolicy batchPolicy;
+    private final BatchDeletePolicy batchDeletePolicy;
 
     public MagazineDataStore(final IAerospikeClient client,
             final AerospikeRetryer retryerFactory,
@@ -76,6 +83,8 @@ public final class MagazineDataStore<T> {
         this.writePolicy.expiration = recordTtl;
         this.writePolicy.sendKey = true;
         this.deletePolicy = AerospikePolicies.writePolicy(client);
+        this.batchPolicy = AerospikePolicies.batchPolicy(client);
+        this.batchDeletePolicy = AerospikePolicies.batchDeletePolicy(client);
     }
 
     public boolean write(final MagazineContext context,
@@ -106,6 +115,33 @@ public final class MagazineDataStore<T> {
             client.delete(deletePolicy, key);
             return true;
         });
+    }
+
+    public void deleteAll(final MagazineContext context, final Collection<MagazineData<T>> magazineData) {
+        if (magazineData.isEmpty()) {
+            return;
+        }
+        if (magazineData.size() == 1) {
+            delete(context, magazineData.iterator().next());
+            return;
+        }
+        final Key[] keys = magazineData.stream()
+                .map(data -> dataKey(context, data.getShard(), data.getFirePointer()))
+                .toArray(Key[]::new);
+        final BatchResults results = retryerFactory.call(() -> {
+            metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.BATCH_DELETE_DATA);
+            return client.delete(batchPolicy, batchDeletePolicy, keys);
+        });
+        if (results.status) {
+            return;
+        }
+        for (BatchRecord result : results.records) {
+            if (result.resultCode != ResultCode.OK && result.resultCode != ResultCode.KEY_NOT_FOUND_ERROR) {
+                throw MagazineExceptions.connectionError(
+                        String.format(ErrorMessage.ERROR_BATCH_DELETING_DATA, context.getMagazineIdentifier()),
+                        null);
+            }
+        }
     }
 
     public Set<MagazineData<T>> peek(final MagazineContext context,

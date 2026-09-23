@@ -32,9 +32,19 @@ public final class ErrorMessage {
     public static final String ERROR_READING_COUNTERS = "Error reading counters [magazineIdentifier = %s]";
     public static final String NO_DATA_TO_FIRE = "No data to fire [magazineIdentifier = %s]";
     public static final String ERROR_DELETING_DATA = "Error deleting data [magazineIdentifier = %s]";
+    public static final String ERROR_BATCH_DELETING_DATA =
+            "Error batch deleting data [magazineIdentifier = %s]";
     public static final String ERROR_INITIALIZING_MAGAZINE =
             "Error initializing magazine [magazineIdentifier = %s]";
     public static final String ERROR_PEEKING_DATA = "Error peeking data [magazineIdentifier = %s]";
+    public static final String FIRE_HISTORY_DISABLED =
+            "Fire history is not enabled for this storage [magazineIdentifier = %s]. Set "
+                    + "fireHistoryEnabled on the storage configuration to record delivery-time "
+                    + "checkpoints.";
+    public static final String FIRE_HISTORY_TOO_SHORT =
+            "Fire history does not reach back to %3$s [magazineIdentifier = %1$s, shard = %2$d]. The "
+                    + "oldest retained checkpoint is %4$s; widen fireHistoryWindowSeconds or raise "
+                    + "fireHistoryEntries.";
     public static final String MISSING_METADATA_RECORD =
             "Metadata record is missing [magazineIdentifier = %s, shard = %d]. Metadata TTL must "
                     + "outlive record TTL; this indicates the magazine metadata expired or was deleted.";

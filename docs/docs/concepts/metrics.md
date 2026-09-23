@@ -117,7 +117,8 @@ All meters are tagged `magazine`.
 
 `claim_fire_pointer`, `increment_load_pointer`, `increment_load_counter`, `increment_fire_counter`,
 `decrement_fire_counter`, `batch_read_metadata`, `refresh_active_shards`, `read_data`, `write_data`,
-`delete_data`, `batch_read_data`, `claim_dedupe_marker`, `withdraw_dedupe_marker`.
+`delete_data`, `batch_delete_data`, `batch_read_data`, `claim_dedupe_marker`,
+`withdraw_dedupe_marker`.
 
 `refresh_active_shards` is the batch read behind an active-shard cache refresh, split out from
 `batch_read_metadata` so refresh traffic is attributable without a meter of its own. A magazine on
@@ -135,6 +136,8 @@ Divide `magazine.aerospike.calls` by the matching outcome counter. Healthy stead
 | `load()` with dedupe | **4** | + claim marker |
 | `reload()` | **3** | allocate pointer, write payload, decrement fire counter |
 | Shard discovery | 1–2 batches / `activeShardRefreshSeconds` / magazine | `refresh_active_shards`; fans out to every shard |
+| `delete()` | **1** | `delete_data` |
+| `deleteAll()` | **1** | `batch_delete_data`, whatever the batch size. A one-record batch takes the single-key path and counts as `delete_data` |
 
 **Calls per `fire()` does not rise with consumer count.** The claim is a guarded atomic increment,
 so concurrent consumers get distinct pointers and no claim is ever lost. If you see the ratio climb

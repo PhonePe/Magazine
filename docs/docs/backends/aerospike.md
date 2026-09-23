@@ -46,7 +46,7 @@ Config fields and their defaults are documented in [Defaults](../concepts/defaul
 | Record | Key | Bins |
 |---|---|---|
 | Shard configuration | `<magazine>_SHARDS` | `SHARDS`, `META_VERSION`, `CREATED_AT` |
-| Metadata (unified) | `<magazine>_SHARD_<n>_METADATA` | `LOAD_POINTER`, `FIRE_POINTER`, `LOAD_COUNTER`, `FIRE_COUNTER` |
+| Metadata (unified) | `<magazine>_SHARD_<n>_METADATA` | `LOAD_POINTER`, `FIRE_POINTER`, `LOAD_COUNTER`, `FIRE_COUNTER`, and `FIRE_HISTORY` when enabled |
 | Metadata (legacy) | `<magazine>_SHARD_<n>_POINTERS` and `..._COUNTERS` | pointers / counters split across two records |
 | Data | `<magazine>_SHARD_<n>_<pointer>` | `data` |
 | Dedupe marker | `<magazine><payload>` in `<clientId>_deduper` | `modified_at` |
@@ -121,6 +121,27 @@ budget on shards containing nothing but failed writes.
 
 The ledger is safe because `FIRE_COUNTER` can never over-count — it advances only after a payload
 was actually read, so a crash leaves it short, which keeps the shard active and fails open.
+
+## Fire history
+
+When `fireHistoryEnabled` is set, each shard's **unified metadata record** carries an extra map bin
+holding delivery-time checkpoints: window start to the fire pointer reached in that window.
+
+- **One entry per shard per window**, regardless of throughput.
+- **Checkpoints are written during the active-shard refresh, not on the claim path.** That refresh
+  already batch-reads every shard's pointer record, so the numbers being recorded are already in
+  hand and no extra read is needed. Deliberately *not* coupled to the claim: claims are the hot path
+  and are far more frequent than the resolution a window needs.
+- `firePointerBefore` also records before it resolves, so a magazine whose history cannot yet answer
+  still accumulates usable history rather than being stuck unable to ever answer.
+- **Each shard's checkpoint is claimed independently**, and the claim is released if the write fails,
+  so a shard that errored is retried next round instead of sitting the window out.
+- **Eviction is by count** (`fireHistoryEntries`), applied on write — by count rather than age so an
+  idle magazine keeps reach instead of having its history wiped by the first write after a pause.
+- **Legacy split metadata does not support it.** Fire history requires the unified metadata record.
+
+The cost is bytes on a record that is already read and written by a periodic refresh, not an extra
+operation on the delivery path.
 
 ## Metadata schema versions
 

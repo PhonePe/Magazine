@@ -25,6 +25,7 @@ import com.phonepe.magazine.entity.MagazineScope;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.entity.StorageType;
 import com.phonepe.magazine.exception.ErrorCode;
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.exception.MagazineExceptions;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
@@ -39,6 +40,9 @@ import com.phonepe.magazine.metrics.MagazineMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
@@ -101,7 +105,8 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.initializer = new AerospikeMagazineInitializer(aerospikeClient, retryerFactory,
                 namespace, metaSetName, storageConfig.getShards(), storageConfig.isAllowShardIncrease());
         this.metadataStore = new MagazineMetadataStore(aerospikeClient, retryerFactory, metrics,
-                namespace, metaSetName, getMetaDataTtl());
+                namespace, metaSetName, getMetaDataTtl(), storageConfig.isFireHistoryEnabled(),
+                storageConfig.fireHistoryWindowMillis(), storageConfig.getFireHistoryEntries());
         this.dataStore = new MagazineDataStore<>(aerospikeClient, retryerFactory, metrics,
                 namespace, dataSetName, getRecordTtl(), clazz);
         this.activeShards = new ActiveShardSelector(this::loadActiveShards,
@@ -213,16 +218,53 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
 
     @Override
     public void delete(final MagazineContext context, final MagazineData<T> magazineData) {
-        if (Objects.isNull(magazineData)) {
-            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
-        }
-        if (!context.getMagazineIdentifier().equals(magazineData.getMagazineIdentifier())) {
-            throw MagazineExceptions.invalidConfiguration("Magazine data belongs to a different magazine.");
-        }
+        validateOwnership(context, magazineData);
         try {
             dataStore.delete(context, magazineData);
         } catch (Exception e) {
             throw mapFailure(e, ErrorMessage.ERROR_DELETING_DATA, context);
+        }
+    }
+
+    /**
+     * Every record is validated before any is deleted, so a batch carrying one foreign record is
+     * rejected whole rather than half applied.
+     */
+    @Override
+    public void deleteAll(final MagazineContext context, final Collection<MagazineData<T>> magazineData) {
+        if (Objects.isNull(magazineData)) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
+        }
+        magazineData.forEach(data -> validateOwnership(context, data));
+        try {
+            dataStore.deleteAll(context, magazineData);
+        } catch (Exception e) {
+            throw mapFailure(e, ErrorMessage.ERROR_BATCH_DELETING_DATA, context);
+        }
+    }
+
+    @Override
+    public Map<String, FireCheckpoint> firePointerBefore(final MagazineContext context, final Instant instant) {
+        if (Objects.isNull(instant)) {
+            throw MagazineExceptions.invalidRequest("Instant is required.");
+        }
+        try {
+            return metadataStore.firePointerBefore(context, instant);
+        } catch (MagazineException e) {
+            throw e;
+        } catch (Exception e) {
+            throw mapFailure(e, ErrorMessage.ERROR_GETTING_META_DATA, context);
+        }
+    }
+
+    @Override
+    public Map<String, List<FireCheckpoint>> fireHistory(final MagazineContext context) {
+        try {
+            return metadataStore.fireHistory(context);
+        } catch (MagazineException e) {
+            throw e;
+        } catch (Exception e) {
+            throw mapFailure(e, ErrorMessage.ERROR_GETTING_META_DATA, context);
         }
     }
 
@@ -336,6 +378,15 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
     private void validateDataType(final T data) {
         if (!clazz.isInstance(data)) {
             throw MagazineExceptions.dataTypeMismatch("Mismatch in data type of magazine and requested data.");
+        }
+    }
+
+    private void validateOwnership(final MagazineContext context, final MagazineData<T> magazineData) {
+        if (Objects.isNull(magazineData)) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data is required.");
+        }
+        if (!context.getMagazineIdentifier().equals(magazineData.getMagazineIdentifier())) {
+            throw MagazineExceptions.invalidConfiguration("Magazine data belongs to a different magazine.");
         }
     }
 

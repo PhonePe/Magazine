@@ -28,6 +28,7 @@ import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -126,6 +127,94 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
         MagazineData<String> magazineData = second.fire();
 
         assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> first.delete(magazineData));
+    }
+
+    @Test
+    void batchDeleteRetiresEveryRecordInTheBatch() {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        List<MagazineData<String>> fired = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            assertTrue(magazine.load("DATA" + i));
+        }
+        for (int i = 0; i < 5; i++) {
+            fired.add(magazine.fire());
+        }
+        fired.forEach(data -> assertNotNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", dataKey(data, 16)))));
+
+        magazine.deleteAll(fired);
+
+        fired.forEach(data -> assertNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", dataKey(data, 16)))));
+    }
+
+    @Test
+    void batchDeleteOfASingleRecordRetiresIt() {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_SINGLE_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        assertTrue(magazine.load("DATA"));
+        MagazineData<String> fired = magazine.fire();
+
+        magazine.deleteAll(List.of(fired));
+
+        assertNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", dataKey(fired, 16))));
+    }
+
+    @Test
+    void batchDeleteToleratesARecordThatIsAlreadyGone() {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_IDEMPOTENT_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        assertTrue(magazine.load("DATA1"));
+        assertTrue(magazine.load("DATA2"));
+        MagazineData<String> first = magazine.fire();
+        MagazineData<String> second = magazine.fire();
+        magazine.delete(first);
+
+        // the batch still carries the record that has already been retired
+        assertDoesNotThrow(() -> magazine.deleteAll(List.of(first, second)));
+
+        assertNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", dataKey(second, 16))));
+    }
+
+    @Test
+    void batchDeleteOfAnEmptyBatchIsANoOp() {
+        Magazine<String> magazine = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_EMPTY_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+
+        assertDoesNotThrow(() -> magazine.deleteAll(List.<MagazineData<String>>of()));
+    }
+
+    @Test
+    void batchDeleteRejectsTheWholeBatchWhenOneRecordIsForeign() {
+        Magazine<String> first = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_OWNER_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        Magazine<String> second = Magazine.<String>builder()
+                .magazineIdentifier("BATCH_DELETE_OTHER_MAGAZINE")
+                .baseMagazineStorage(buildMagazineStorage(String.class, false))
+                .build();
+        assertTrue(first.load("MINE"));
+        assertTrue(second.load("THEIRS"));
+        MagazineData<String> mine = first.fire();
+        MagazineData<String> theirs = second.fire();
+
+        assertMagazineError(ErrorCode.INVALID_CONFIGURATION, () -> first.deleteAll(List.of(mine, theirs)));
+
+        // validation runs before any delete, so the owned record must survive the rejection
+        assertNotNull(aerospikeClient.get(aerospikeClient.getWritePolicyDefault(),
+                new Key("NAMESPACE", "FARM_ID_DATA_SET", dataKey(mine, 16))));
     }
 
     @Test

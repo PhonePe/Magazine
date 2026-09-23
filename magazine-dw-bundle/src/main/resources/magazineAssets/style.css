@@ -22,6 +22,14 @@ table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;
 th,td { text-align:right; border-bottom:1px solid var(--line); padding:10px 8px; }
 th:first-child,td:first-child { text-align:left; }
 th { color:var(--muted); font-size:11px; text-transform:uppercase; }
+.filter { width:100%; margin-bottom:14px; color:var(--ink); background:#0d120e; border:1px solid var(--line); padding:10px 12px; }
+.filter:focus { outline:1px solid var(--accent); border-color:var(--accent); }
+.note { color:var(--muted); font-size:12px; margin:0 0 16px; }
+.history-metrics { margin-bottom:16px; }
+.scope { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.scope label { color:var(--muted); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+.scope select { color:var(--ink); background:#0d120e; border:1px solid var(--line); padding:9px 12px; }
+.scope select:focus { outline:1px solid var(--accent); border-color:var(--accent); }
 .peek { margin-top:20px; display:grid; grid-template-columns:140px minmax(180px,1fr) auto; gap:12px; align-items:end; }
 .peek label { color:var(--muted); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
 .peek input { display:block; width:100%; margin-top:6px; color:var(--ink); background:#0d120e; border:1px solid var(--line); padding:11px 12px; }

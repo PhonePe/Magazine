@@ -17,8 +17,11 @@
 package com.phonepe.magazine.impl.aerospike;
 
 import com.phonepe.magazine.entity.MagazineContext;
+import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MagazineScope;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,6 +68,53 @@ class MagazineMetricsTest extends AerospikeMagazineTestBase {
         // exactly one claim, and it was won - no contention retries
         assertEquals(1.0, counterValue(registry, "magazine.fire.claims", "outcome", "won"));
         assertEquals(1.0, counterValue(registry, "magazine.fire.outcomes", "outcome", "delivered"));
+    }
+
+    @Test
+    void batchDeleteCostsOneRoundTripWhateverTheBatchSize() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AerospikeStorage<String> storage = buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
+                        30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient,
+                registry);
+        MagazineContext context = storage.initialize("BATCH_DELETE_ROUND_TRIP_MAGAZINE");
+        List<MagazineData<String>> fired = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            assertTrue(storage.load(context, "PAYLOAD" + i));
+        }
+        for (int i = 0; i < 5; i++) {
+            fired.add(storage.fire(context));
+        }
+
+        storage.deleteAll(context, fired);
+
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "batch_delete_data"));
+        assertEquals(0.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "delete_data"));
+    }
+
+    /**
+     * A one-record batch takes the single-key path, because batch framing buys nothing when there
+     * is nothing to amortise it over.
+     */
+    @Test
+    void aSingleRecordBatchUsesTheSingleKeyPath() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AerospikeStorage<String> storage = buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
+                        30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient,
+                registry);
+        MagazineContext context = storage.initialize("SINGLE_BATCH_ROUND_TRIP_MAGAZINE");
+        assertTrue(storage.load(context, "PAYLOAD"));
+
+        storage.deleteAll(context, List.of(storage.fire(context)));
+
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls", "operation", "delete_data"));
+        assertEquals(0.0, counterValue(registry, "magazine.aerospike.calls",
+                "operation", "batch_delete_data"));
     }
 
     @Test

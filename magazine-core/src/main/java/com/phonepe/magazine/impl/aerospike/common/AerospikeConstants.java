@@ -41,14 +41,25 @@ public final class AerospikeConstants {
     public static final String METADATA_SCHEMA_VERSION = "META_VERSION";
     public static final String CREATED_AT = "CREATED_AT";
     public static final String SHARDS_BIN = "SHARDS";
+    /**
+     * Delivery-time checkpoints: a key-ordered map of {@code negated window start -> fire pointer}.
+     * Keys are negated so the map sorts newest-first, which makes eviction a single index-range
+     * removal that keeps the newest N entries.
+     */
+    public static final String FIRE_HISTORY = "FIRE_HISTORY";
 
     /**
      * Bins to project on metadata batch reads. Metadata records are read {@code shards}-wide on
      * every active-shard refresh, so projecting keeps that fan-out from carrying bins nobody reads.
+     * {@link #FIRE_HISTORY} is deliberately absent: only {@code firePointerBefore} consults it.
      */
     @Getter
     private static final String[] metadataBins = {
             LOAD_POINTER, FIRE_POINTER, LOAD_COUNTER, FIRE_COUNTER};
+
+    /** Bins to project when reading delivery-time checkpoints. */
+    @Getter
+    private static final String[] fireHistoryBins = {FIRE_POINTER, FIRE_HISTORY};
 
     /** Bins to project on data reads - the payload is the only bin any caller consumes. */
     @Getter
@@ -105,4 +116,10 @@ public final class AerospikeConstants {
     public static final int DEFAULT_SHARDS = 8;
 
     public static final int SHARD_CONFIGURATION_TTL_SECONDS = 5 * 365 * 24 * 60 * 60;
+
+    // --- fire history -----------------------------------------------------------------------
+    public static final int DEFAULT_FIRE_HISTORY_WINDOW_SECONDS = 300;
+    /** Small on purpose: the map rides the pointer record, and every claim rewrites that record. */
+    public static final int DEFAULT_FIRE_HISTORY_ENTRIES = 32;
+    public static final int MAX_FIRE_HISTORY_ENTRIES = 128;
 }

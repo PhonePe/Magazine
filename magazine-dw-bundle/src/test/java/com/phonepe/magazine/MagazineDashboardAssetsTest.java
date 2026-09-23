@@ -38,12 +38,21 @@ class MagazineDashboardAssetsTest {
         assertTrue(html.contains("href=\"style.css\""));
         assertTrue(html.contains("load counter"));
         assertTrue(html.contains("fire counter"));
+        assertTrue(html.contains("id=\"magazine-filter\""));
+        assertTrue(html.contains("/fire-history"));
+        assertTrue(html.contains("Delivery history"));
+        assertTrue(html.contains("id=\"history-shard\""));
+        assertTrue(html.contains("windows retained"));
+        assertFalse(html.contains("window.firePointers"),
+                "history is reduced server-side; a per-shard grid does not survive 256 shards");
+        assertTrue(css.contains(".filter"));
         assertTrue(html.contains("setInterval"));
         assertTrue(html.contains("30000"));
         assertTrue(css.contains("@media (max-width:760px)"));
         assertFalse(html.contains("/load"));
         assertFalse(html.contains("/reload"));
-        assertFalse(html.contains("/fire"));
+        assertFalse(html.replace("/fire-history", "").contains("/fire"),
+                "/fire-history is a read; the console must never call the mutating /fire");
         assertFalse(html.contains("method:'DELETE'"));
     }
 

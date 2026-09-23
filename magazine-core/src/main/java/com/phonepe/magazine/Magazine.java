@@ -17,10 +17,14 @@
 package com.phonepe.magazine;
 
 import com.phonepe.magazine.core.BaseMagazineStorage;
+import com.phonepe.magazine.entity.FireCheckpoint;
 import com.phonepe.magazine.entity.MagazineContext;
 import com.phonepe.magazine.entity.MagazineData;
 import com.phonepe.magazine.entity.MetaData;
 import com.phonepe.magazine.exception.MagazineExceptions;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -100,6 +104,19 @@ public class Magazine<T> {
     }
 
     /**
+     * Delete a batch of records that have all been handled, in one round trip where the backend
+     * supports it.
+     *
+     * @param magazineData The MagazineData records to be deleted. Empty is a no-op.
+     * @throws com.phonepe.magazine.exception.MagazineException with {@code INVALID_CONFIGURATION}
+     *         if any record belongs to a different magazine. The batch is validated before any of
+     *         it is deleted.
+     */
+    public void deleteAll(final Collection<MagazineData<T>> magazineData) {
+        baseMagazineStorage.deleteAll(context, magazineData);
+    }
+
+    /**
      * Retrieve metadata of the specified magazine i.e the number of loaded or fired, pointers and counters.
      *
      * @return A map containing metadata information.
@@ -115,6 +132,40 @@ public class Magazine<T> {
      */
     public int getShards() {
         return context.getShards();
+    }
+
+    /**
+     * Where each shard's fire pointer stood at {@code instant}.
+     * <p>
+     * Slots are claimed in order, so one number per shard answers "which slots had been handed out
+     * by then". Every slot at or below a shard's returned pointer
+     * was claimed at or before {@code instant}.
+     * <p>
+     * Requires {@code fireHistoryEnabled} on the storage configuration.
+     *
+     * @param instant The moment to report on.
+     * @return shard id to checkpoint, keyed as {@link #getMetaData()} is. A shard is absent when no
+     *         checkpoint reaches back that far yet, which is normal for a young magazine and means
+     *         the caller should do nothing this round rather than assume the shard is empty.
+     * @throws com.phonepe.magazine.exception.MagazineException {@code NOT_ENABLED} when fire
+     *         history is disabled; {@code INVALID_REQUEST} when history was retained but has
+     *         already been evicted past {@code instant}, which means the configured window is too
+     *         narrow for the age being asked about.
+     */
+    public Map<String, FireCheckpoint> firePointerBefore(final Instant instant) {
+        return baseMagazineStorage.firePointerBefore(context, instant);
+    }
+
+    /**
+     * Every checkpoint currently retained, newest first.
+     *
+     * @return shard id to its checkpoints, newest first, keyed as {@link #getMetaData()} is. A
+     *         shard is absent when it has never recorded one.
+     * @throws com.phonepe.magazine.exception.MagazineException {@code NOT_ENABLED} when fire
+     *         history is disabled.
+     */
+    public Map<String, List<FireCheckpoint>> fireHistory() {
+        return baseMagazineStorage.fireHistory(context);
     }
 
     /**

@@ -17,6 +17,7 @@
 package com.phonepe.magazine.resources;
 
 import com.phonepe.magazine.request.PeekRequest;
+import com.phonepe.magazine.response.FireHistoryResponse;
 import com.phonepe.magazine.response.MagazineDescriptor;
 import com.phonepe.magazine.response.MagazineMetadataResponse;
 import com.phonepe.magazine.response.PeekResponse;
@@ -28,6 +29,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +56,17 @@ public final class MagazineResource {
     @Path("/{identifier}/metadata")
     public MagazineMetadataResponse metadata(@PathParam("identifier") final String identifier) {
         return service.metadata(identifier);
+    }
+
+    /**
+     * @param shard a single shard to report on, or absent for totals. Shard count is unbounded, so
+     *              per-shard series are fetched one at a time rather than as a grid.
+     */
+    @GET
+    @Path("/{identifier}/fire-history")
+    public FireHistoryResponse fireHistory(@PathParam("identifier") final String identifier,
+            @QueryParam("shard") final String shard) {
+        return service.fireHistory(identifier, shard);
     }
 
     @POST

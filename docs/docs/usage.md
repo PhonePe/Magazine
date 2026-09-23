@@ -10,6 +10,7 @@ Every `Magazine<T>` instance exposes these operations:
 | `fire()` | Dequeue and return the next item. |
 | `reload(T data)` | Re-enqueue data (decrements fire counter instead of incrementing load counter). |
 | `delete(MagazineData<T>)` | Remove a specific record from the backend. |
+| `deleteAll(Collection<MagazineData<T>>)` | Remove a batch of records in one round trip. |
 | `getMetaData()` | Retrieve per-shard counters and pointers. |
 | `getShards()` | This magazine's persisted shard count. |
 | `peek(Map<Integer, Set<Long>>)` | Read specific shard/pointer records without consuming. |
@@ -103,6 +104,10 @@ magazine.delete(fired);
 !!! warning
     `delete()` throws a `MagazineException` with `INVALID_CONFIGURATION` if the supplied `MagazineData` belongs to a different magazine than the one you call it on. Do not route records returned by one magazine into another's `delete()`.
 
+    `deleteAll()` applies the same rule to every record in the batch, and validates the whole batch
+    before deleting any of it - so a batch carrying one foreign record is rejected without
+    retiring the records it did own.
+
 ## Peeking Data
 
 Read records from specific shards and pointers **without modifying any counters or pointers**. Useful for inspection, debugging, or replay scenarios.
@@ -141,6 +146,77 @@ SHARD_0              load=5/5  fire=2/2
 SHARD_1              load=3/3  fire=1/1
 SHARD_2              load=0/0  fire=0/0
 ...
+```
+
+## Delivery-Time History
+
+Answers "where had each shard's fire pointer reached at time T?" — which is how a caller can tell an
+abandoned in-flight record from one that was only just claimed, without stamping a timestamp on every
+message.
+
+**Off by default.** The checkpoint map rides the shard's pointer record and every claim rewrites that
+record, so a caller that never asks should not pay for it.
+
+```java
+AerospikeStorageConfig.builder()
+        .dataSetName("my_data")
+        .metaSetName("my_meta")
+        .namespace("test")
+        .shards(8)
+        .fireHistoryEnabled(true)     // default false
+        .fireHistoryWindowSeconds(60) // resolution of every answer
+        .fireHistoryEntries(32)       // checkpoints retained per shard
+        .build();
+```
+
+### Asking
+
+```java
+Map<String, FireCheckpoint> watermarks =
+        magazine.firePointerBefore(Instant.now().minus(Duration.ofMinutes(20)));
+
+watermarks.forEach((shard, checkpoint) ->
+        System.out.printf("%s: everything at or below pointer %d was claimed 20+ minutes ago%n",
+                shard, checkpoint.firePointer()));
+```
+
+Every slot at or below the returned pointer was claimed at or before that instant. Slots above it
+might have been claimed a moment ago.
+
+!!! note "An absent shard means 'do nothing', not 'empty'"
+    A shard is missing from the result when no checkpoint reaches back that far yet. That is normal
+    for a young magazine. Treat it as "nothing is provably old enough here this round" — never as
+    "this shard has nothing in flight".
+
+### Sizing, and the failure you must not swallow
+
+| Setting | Meaning |
+|---|---|
+| `fireHistoryWindowSeconds` | Seconds covered by one checkpoint, and therefore the **resolution** of every answer. One entry per shard per window, whatever the throughput |
+| `fireHistoryEntries` | Checkpoints retained per shard. Eviction is by **count, not age**, so an intermittently used magazine reaches further back than `window x entries` rather than having its history wiped by the first write after an idle period |
+
+Asking about an instant further back than the retained history throws `INVALID_REQUEST`, and asking
+at all with the feature disabled throws `NOT_ENABLED`.
+
+**This is deliberate and must not be caught and ignored.** Returning an empty map would be
+indistinguishable from "nothing is old enough", and a caller using this to recover abandoned messages
+would silently stop recovering them. Size `window x entries` to comfortably exceed the oldest age you
+intend to ask about.
+
+```java
+try {
+    magazine.firePointerBefore(cutoff);
+} catch (MagazineException e) {
+    if (e.getErrorCode() == ErrorCode.INVALID_REQUEST) {
+        // History no longer spans the cutoff. Skip this round loudly - do not treat as "nothing to do".
+    }
+}
+```
+
+### Inspecting the whole history
+
+```java
+Map<String, List<FireCheckpoint>> history = magazine.fireHistory(); // newest first per shard
 ```
 
 ## Managing Multiple Magazines

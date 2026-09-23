@@ -17,6 +17,8 @@ exception and switch on the code; the message is for humans, the code is the con
 | `INVALID_SHARDS` | A shard count is out of range, or a shard-layout change was refused. |
 | `INVALID_CONFIGURATION` | A configuration value is missing or invalid. Raised at construction. |
 | `DATA_TYPE_MISMATCH` | The payload does not match the magazine's declared type, or deduplication was enabled for an unsupported type. |
+| `NOT_ENABLED` | An optional capability was asked for but is switched off in configuration — currently only `firePointerBefore` without `fireHistoryEnabled`. Distinct from `NOT_IMPLEMENTED`: the capability exists, it is simply not turned on. |
+| `INVALID_REQUEST` | The call itself was out of range for this magazine's current state, though the configuration is sound — for example asking `firePointerBefore` about a moment older than the retained fire history. The same magazine answers a more recent instant correctly. |
 
 ## `NOTHING_TO_FIRE` vs `RETRIES_EXHAUSTED`
 

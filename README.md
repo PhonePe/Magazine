@@ -174,6 +174,7 @@ For peek, try shard `0` pointers `35` and `36` on `email-jobs`, or pointers `50`
 | | `fire()` | Dequeue next item |
 | | `reload(T data)` | Re-enqueue (no load-counter increment) |
 | | `delete(MagazineData<T>)` | Remove a specific record |
+| | `deleteAll(Collection<MagazineData<T>>)` | Remove a batch in one round trip |
 | | `getMetaData()` | Retrieve per-shard counters & pointers |
 | | `peek(Map<Integer,Set<Long>>)` | Read without consuming |
 | `MagazineManager` | `refresh(List<Magazine<?>>)` | Register / update magazines |

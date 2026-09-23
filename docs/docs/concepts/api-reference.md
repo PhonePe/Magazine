@@ -32,10 +32,13 @@ Magazine<T> magazine = Magazine.<T>builder()
 | `fire()` | `MagazineData<T>` | Dequeue and return the next item. **At-most-once** — see [Delivery Semantics](delivery-semantics.md). |
 | `reload(T data)` | `boolean` | Re-enqueue data (decrements fire counter, not increment load counter). |
 | `delete(MagazineData<T> magazineData)` | `void` | Delete a specific record from the backend. |
+| `deleteAll(Collection<MagazineData<T>> magazineData)` | `void` | Delete a batch of records |
 | `getMetaData()` | `Map<String, MetaData>` | Per-shard metadata (counters and pointers). |
 | `getShards()` | `int` | This magazine's **persisted** shard count (from the resolved `MagazineContext`), not the shard count configured on the storage. |
 | `peek(Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read specific records without consuming. |
 | `getMagazineIdentifier()` | `String` | The identifier this magazine is bound to. |
+| `firePointerBefore(Instant instant)` | `Map<String, FireCheckpoint>` | Where each shard's fire pointer stood at `instant`. Requires `fireHistoryEnabled`. A shard is **absent** when no checkpoint reaches back that far — treat that as "do nothing here", not "empty". Throws `NOT_ENABLED`, or `INVALID_REQUEST` when the retained history no longer spans `instant`. |
+| `fireHistory()` | `Map<String, List<FireCheckpoint>>` | Every retained checkpoint per shard, newest first. Requires `fireHistoryEnabled`. |
 
 !!! warning "`fire()` is at-most-once"
     A record is claimed by a guarded atomic increment of the fire pointer. If the client times out after the server applied the claim, the pointer has advanced and that record will never be delivered. `fire()` throws `NOTHING_TO_FIRE` when the magazine is drained and `RETRIES_EXHAUSTED` when it gave up while skipping pointer holes — the latter does **not** mean the queue is empty. See [Delivery Semantics](delivery-semantics.md).
@@ -97,6 +100,7 @@ There is no `shards` constructor parameter — shard count is a property of the 
 | `fire(MagazineContext context)` | `MagazineData<T>` | Consume the next item from the context's magazine. |
 | `getMetaData(MagazineContext context)` | `Map<String, MetaData>` | Read per-shard metadata. |
 | `delete(MagazineContext context, MagazineData<T> magazineData)` | `void` | Delete a specific record. |
+| `deleteAll(MagazineContext context, Collection<MagazineData<T>> magazineData)` | `void` | Delete a batch. **Abstract — every backend must implement it.** Batch it into one round trip if the backend can; otherwise loop `delete`. |
 | `peek(MagazineContext context, Map<Integer, Set<Long>> shardPointersMap)` | `Set<MagazineData<T>>` | Read without consuming. |
 
 Every method except `initialize` takes the `MagazineContext` as its first argument.

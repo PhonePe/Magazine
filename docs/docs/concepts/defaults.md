@@ -14,6 +14,9 @@
 | `activeShardRefreshSeconds` | `5` | Primary lever on steady-state read load. |
 | `maxFireHoleSkips` | `512` | Bounds `fire()`; exhausting it raises `RETRIES_EXHAUSTED`. |
 | `metricsEnabled` | `true` | Publishes to Micrometer's global registry unless a `meterRegistry` is set on the builder. |
+| `fireHistoryEnabled` | `false` | Records delivery-time checkpoints, which `firePointerBefore` reads. Off by default: the checkpoint map rides the pointer record. |
+| `fireHistoryWindowSeconds` | `300` | Seconds per checkpoint, and so the resolution of every `firePointerBefore` answer. |
+| `fireHistoryEntries` | `32` | Checkpoints retained per shard. Evicted by **count**, not age. |
 
 ### `metaDataTtl` must outlive `recordTtl`
 
@@ -65,6 +68,8 @@ Not user-configurable. Defined in `com.phonepe.magazine.impl.aerospike.common.Ae
 | `MAX_FIRE_HOLE_SKIPS` | `512` | Default for `maxFireHoleSkips`. |
 | `DEFAULT_SHARDS` | `8` | Default for `shards`. |
 | `DEFAULT_REFRESH` | `5` | Default for `activeShardRefreshSeconds`. |
+| `DEFAULT_FIRE_HISTORY_WINDOW_SECONDS` | `300` | Default for `fireHistoryWindowSeconds`. |
+| `DEFAULT_FIRE_HISTORY_ENTRIES` | `32` | Default for `fireHistoryEntries`. |
 | `DEFAULT_MAX_ELEMENTS` | `1024` | Active-shard cache capacity, in magazines. |
 | `SHARD_CONFIGURATION_TTL_SECONDS` | `157680000` (5 years) | TTL of the per-magazine shard configuration record. |
 | `LEGACY_METADATA_SCHEMA_VERSION` | `0` | Pointers and counters in separate records. |
