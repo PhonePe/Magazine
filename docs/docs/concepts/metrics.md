@@ -45,7 +45,7 @@ public class MyApp extends Application<MyConfig> {
                 // no meterRegistry: the bundle already attached one globally
                 .build();
 
-        magazineBundle.getMagazineManager().refresh(List.of(
+        magazineBundle.getMagazineManager().replaceAll(List.of(
                 Magazine.<String>builder()
                         .magazineIdentifier("email-jobs")
                         .baseMagazineStorage(storage)

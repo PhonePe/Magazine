@@ -237,7 +237,7 @@ Magazine<Long> idsMag = Magazine.<Long>builder()
         .build();
 
 // Register all magazines
-manager.refresh(List.of(ordersMag, idsMag));
+manager.replaceAll(List.of(ordersMag, idsMag));
 
 // Retrieve by identifier
 Magazine<String> orders = manager.getMagazine("orders");
@@ -247,8 +247,24 @@ Magazine<Long> ids = manager.getMagazine("id-pool");
 MagazineData<Long> id = ids.fire();
 ```
 
-!!! note
-    `refresh()` atomically replaces the internal magazine map. Call it whenever your magazine topology changes (e.g. on config reload).
+!!! warning "`replaceAll` evicts"
+    `replaceAll()` atomically replaces the internal magazine map, so **every magazine absent from the list is unregistered**. Calling it with a single magazine drops all the others, and the next `getMagazine()` for one of them throws `MAGAZINE_NOT_FOUND`.
+
+    To add one magazine without disturbing the rest, use `register(magazine)`. On a per-request path use `getOrRegister(identifier, supplier)`: constructing a `Magazine` resolves its persisted shard configuration over the network, and `getOrRegister` skips that entirely when the handle is already held.
+
+If you want to own the miss path yourself, `find()` is the non-throwing lookup:
+
+```java
+Magazine<String> orders = manager.<String>find("orders")
+        .orElseGet(() -> {
+            Magazine<String> built = Magazine.<String>builder()
+                    .baseMagazineStorage(stringStorage)
+                    .magazineIdentifier("orders")
+                    .build();
+            manager.register(built);
+            return built;
+        });
+```
 
 ## De-duplication
 

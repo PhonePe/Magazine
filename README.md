@@ -132,7 +132,17 @@ Set<MagazineData<String>> peeked = magazine.peek(shardPointers);
 
 ```java
 MagazineManager manager = new MagazineManager("my-service");
-manager.refresh(List.of(magazine));
+
+// Add one magazine, leaving any others registered
+manager.register(magazine);
+
+// Or build it only if it is not already registered - constructing a Magazine
+// costs a shard-configuration read, so prefer this on a per-request path
+Magazine<String> notifications = manager.getOrRegister("notifications",
+        () -> Magazine.<String>builder()
+                .baseMagazineStorage(storage)
+                .magazineIdentifier("notifications")
+                .build());
 
 // Retrieve by identifier
 Magazine<String> m = manager.getMagazine("notifications");
@@ -177,7 +187,11 @@ For peek, try shard `0` pointers `35` and `36` on `email-jobs`, or pointers `50`
 | | `deleteAll(Collection<MagazineData<T>>)` | Remove a batch in one round trip |
 | | `getMetaData()` | Retrieve per-shard counters & pointers |
 | | `peek(Map<Integer,Set<Long>>)` | Read without consuming |
-| `MagazineManager` | `refresh(List<Magazine<?>>)` | Register / update magazines |
+| `MagazineManager` | `register(Magazine<?>)` | Add one magazine, keeping the rest |
+| | `getOrRegister(String, Supplier<Magazine<T>>)` | Look up, building only if absent |
+| | `find(String)` | Look up, empty if absent |
+| | `replaceAll(List<Magazine<?>>)` | Replace the whole registration set |
+| | `unregister(String)` | Drop one registration |
 | | `getMagazine(String)` | Retrieve magazine by identifier |
 
 ## Documentation

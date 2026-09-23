@@ -158,11 +158,11 @@ public void initialize(Bootstrap<ServiceConfiguration> bootstrap) {
 
 @Override
 public void run(ServiceConfiguration configuration, Environment environment) {
-    magazineBundle.getMagazineManager().refresh(configuredMagazines);
+    magazineBundle.getMagazineManager().replaceAll(configuredMagazines);
 }
 ```
 
-The bundle creates and exposes its `MagazineManager`, following the Ignis bundle pattern. `MagazineManager.refresh(...)` atomically replaces the registered map, and API/dashboard requests see the new magazine set immediately without a restart.
+The bundle creates and exposes its `MagazineManager`, following the Ignis bundle pattern. `MagazineManager.replaceAll(...)` atomically replaces the registered map, and API/dashboard requests see the new magazine set immediately without a restart. Use `register(...)` to add a single magazine without evicting the others.
 
 `MagazineBundle` declares exactly two abstract methods, both shown above:
 

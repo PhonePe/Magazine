@@ -46,7 +46,7 @@ class MagazineLifecycleTest extends AerospikeMagazineTestBase {
     @BeforeEach
     void setup() {
         magazineManager = new MagazineManager("CLIENT_ID");
-        magazineManager.refresh(List.of(Magazine.<String>builder()
+        magazineManager.replaceAll(List.of(Magazine.<String>builder()
                         .magazineIdentifier("MAGAZINE_ID1")
                         .baseMagazineStorage(buildMagazineStorage(String.class))
                         .build(),
