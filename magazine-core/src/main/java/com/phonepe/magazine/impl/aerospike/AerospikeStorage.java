@@ -105,8 +105,9 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
         this.initializer = new AerospikeMagazineInitializer(aerospikeClient, retryerFactory,
                 namespace, metaSetName, storageConfig.getShards(), storageConfig.isAllowShardIncrease());
         this.metadataStore = new MagazineMetadataStore(aerospikeClient, retryerFactory, metrics,
-                namespace, metaSetName, getMetaDataTtl(), storageConfig.isFireHistoryEnabled(),
-                storageConfig.fireHistoryWindowMillis(), storageConfig.getFireHistoryEntries());
+                namespace, metaSetName, getMetaDataTtl(),
+                new MagazineMetadataStore.FireHistoryConfig(storageConfig.isFireHistoryEnabled(),
+                        storageConfig.fireHistoryWindowMillis(), storageConfig.getFireHistoryEntries()));
         this.dataStore = new MagazineDataStore<>(aerospikeClient, retryerFactory, metrics,
                 namespace, dataSetName, getRecordTtl(), clazz);
         this.activeShards = new ActiveShardSelector(this::loadActiveShards,

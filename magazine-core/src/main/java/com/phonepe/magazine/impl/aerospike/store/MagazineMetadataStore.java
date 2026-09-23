@@ -115,23 +115,24 @@ public final class MagazineMetadataStore {
      */
     private final Map<MagazineContext, AtomicLong[]> checkpointWindows = new ConcurrentHashMap<>();
 
+    public record FireHistoryConfig(boolean enabled, long windowMillis, int entries) {
+    }
+
     public MagazineMetadataStore(final IAerospikeClient client,
             final AerospikeRetryer retryerFactory,
             final MagazineMetrics metrics,
             final String namespace,
             final String metaSetName,
             final int metaDataTtl,
-            final boolean fireHistoryEnabled,
-            final long fireHistoryWindowMillis,
-            final int fireHistoryEntries) {
+            final FireHistoryConfig fireHistoryConfig) {
         this.client = client;
         this.retryerFactory = retryerFactory;
         this.metrics = metrics;
         this.namespace = namespace;
         this.metaSetName = metaSetName;
-        this.fireHistoryEnabled = fireHistoryEnabled;
-        this.fireHistoryWindowMillis = fireHistoryWindowMillis;
-        this.fireHistoryEntries = fireHistoryEntries;
+        this.fireHistoryEnabled = fireHistoryConfig.enabled();
+        this.fireHistoryWindowMillis = fireHistoryConfig.windowMillis();
+        this.fireHistoryEntries = fireHistoryConfig.entries();
 
         this.claimPolicy = AerospikePolicies.writePolicy(client);
         this.claimPolicy.recordExistsAction = RecordExistsAction.UPDATE_ONLY;
@@ -346,10 +347,10 @@ public final class MagazineMetadataStore {
     }
 
     private Optional<FireCheckpoint> resolveCheckpoint(final MagazineContext context,
-            final Record record,
+            final Record pointerRecord,
             final Instant instant,
             final int shard) {
-        final SortedMap<Long, Long> history = readHistory(record);
+        final SortedMap<Long, Long> history = readHistory(pointerRecord);
         final long cutoff = instant.toEpochMilli();
         for (Map.Entry<Long, Long> entry : history.entrySet()) {
             final long windowStart = -entry.getKey();
@@ -369,8 +370,8 @@ public final class MagazineMetadataStore {
     }
 
     @SuppressWarnings("unchecked")
-    private SortedMap<Long, Long> readHistory(final Record record) {
-        final Object raw = Objects.isNull(record) ? null : record.getValue(AerospikeConstants.FIRE_HISTORY);
+    private SortedMap<Long, Long> readHistory(final Record pointerRecord) {
+        final Object raw = Objects.isNull(pointerRecord) ? null : pointerRecord.getValue(AerospikeConstants.FIRE_HISTORY);
         return raw instanceof Map ? new TreeMap<>((Map<Long, Long>) raw) : new TreeMap<>();
     }
 

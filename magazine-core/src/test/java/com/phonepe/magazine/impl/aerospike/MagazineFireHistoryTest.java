@@ -88,13 +88,13 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @Test
     @DisplayName("a new window adds a checkpoint without disturbing the old one")
-    void newWindowAddsACheckpoint() throws Exception {
+    void newWindowAddsACheckpoint() {
         final Magazine<String> magazine = magazine("HIST_ROLL", "HIST_ROLL_SET", true, 1, 8);
         loadAndFire(magazine, 2);
         magazine.firePointerBefore(Instant.now());
         final Map<Long, Long> first = new TreeMap<>(history(magazine, 0));
 
-        Thread.sleep(1_100);
+        awaitNextWindow();
         loadAndFire(magazine, 2);
         magazine.firePointerBefore(Instant.now());
 
@@ -108,13 +108,13 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @Test
     @DisplayName("history is capped by count, so it cannot grow without bound")
-    void historyIsBoundedByCount() throws Exception {
+    void historyIsBoundedByCount() {
         final int cap = 3;
         final Magazine<String> magazine = magazine("HIST_CAP", "HIST_CAP_SET", true, 1, cap);
         for (int round = 0; round < cap + 3; round++) {
             loadAndFire(magazine, 1);
             magazine.firePointerBefore(Instant.now());
-            Thread.sleep(1_100);
+            awaitNextWindow();
         }
         assertEquals(cap, history(magazine, 0).size(),
                 "the newest entries are kept and everything past the cap is dropped");
@@ -127,22 +127,22 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         loadAndFire(magazine, 5);
         magazine.firePointerBefore(Instant.now());
 
-        final Record record = record(magazine, 0);
-        final long actual = record.getLong(AerospikeConstants.FIRE_POINTER);
+        final Record pointerRecord = metadataRecord(magazine, 0);
+        final long actual = pointerRecord.getLong(AerospikeConstants.FIRE_POINTER);
         history(magazine, 0).values().forEach(recorded -> assertTrue(recorded <= actual,
                 "checkpoint " + recorded + " must not exceed the fire pointer " + actual));
     }
 
     @Test
     @DisplayName("the answer is the newest checkpoint at or before the instant asked about")
-    void returnsNewestCheckpointNotAfterTheInstant() throws Exception {
+    void returnsNewestCheckpointNotAfterTheInstant() {
         final Magazine<String> magazine = magazine("HIST_PICK", "HIST_PICK_SET", true, 1, 8);
         loadAndFire(magazine, 2);
         magazine.firePointerBefore(Instant.now());
         final Instant afterFirstBurst = Instant.now();
-        final long pointerAfterFirstBurst = record(magazine, 0).getLong(AerospikeConstants.FIRE_POINTER);
+        final long pointerAfterFirstBurst = metadataRecord(magazine, 0).getLong(AerospikeConstants.FIRE_POINTER);
 
-        Thread.sleep(1_100);
+        awaitNextWindow();
         loadAndFire(magazine, 4);
         magazine.firePointerBefore(Instant.now());
 
@@ -167,14 +167,14 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @Test
     @DisplayName("a full history that cannot reach back far enough is a configuration error, not an empty answer")
-    void evictedHistoryFailsLoudly() throws Exception {
+    void evictedHistoryFailsLoudly() {
         final int cap = 2;
         final Magazine<String> magazine = magazine("HIST_EVICTED", "HIST_EVICTED_SET", true, 1, cap);
         final Instant longAgo = Instant.now().minus(Duration.ofHours(1));
         for (int round = 0; round < cap + 1; round++) {
             loadAndFire(magazine, 1);
             magazine.firePointerBefore(Instant.now());
-            Thread.sleep(1_100);
+            awaitNextWindow();
         }
 
         // At capacity with every retained entry newer than the question: real history was
@@ -186,13 +186,13 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @Test
     @DisplayName("reading advances history, so a burst that is never fired from again stays reachable")
-    void readingRecordsACheckpoint() throws Exception {
+    void readingRecordsACheckpoint() {
         final Magazine<String> magazine = magazine("HIST_BURST", "HIST_BURST_SET", true, 1, 8);
         loadAndFire(magazine, 3);
         magazine.firePointerBefore(Instant.now());
         final long newestBefore = newestWindowKey(magazine);
 
-        Thread.sleep(1_100);
+        awaitNextWindow();
         // No load, no fire: the magazine is idle. Reading alone must still move history forward,
         // otherwise a magazine that took one burst and was then abandoned would hold a single
         // checkpoint predating the burst and its orphans would never become visible.
@@ -250,12 +250,12 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @Test
     @DisplayName("the whole retained history reads back newest first, and reading it records nothing")
-    void fireHistoryReturnsEverythingRetainedWithoutRecording() throws Exception {
+    void fireHistoryReturnsEverythingRetainedWithoutRecording() {
         final Magazine<String> magazine = magazine("HIST_ALL", "HIST_ALL_SET", true, 1, 8);
         for (int round = 0; round < 3; round++) {
             loadAndFire(magazine, 1);
             magazine.firePointerBefore(Instant.now());
-            Thread.sleep(1_100);
+            awaitNextWindow();
         }
 
         final List<FireCheckpoint> checkpoints = magazine.fireHistory().get("SHARD_0");
@@ -270,7 +270,7 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
         // A console browsing history must not write to the magazine it is inspecting.
         final int before = history(magazine, 0).size();
-        Thread.sleep(1_100);
+        awaitNextWindow();
         magazine.fireHistory();
         assertEquals(before, history(magazine, 0).size(), "reading history must not record a window");
     }
@@ -343,6 +343,13 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
                 String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient);
     }
 
+    private void awaitNextWindow() {
+        Awaitility.await("the current fire-history window to close")
+                .pollDelay(Duration.ofMillis(1_100))
+                .atMost(Duration.ofSeconds(5))
+                .until(() -> true);
+    }
+
     private void loadAndFire(final Magazine<String> magazine, final int count) {
         for (int i = 0; i < count; i++) {
             magazine.load("message-" + random.nextLong());
@@ -371,7 +378,7 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
                 });
     }
 
-    private Record record(final Magazine<String> magazine, final int shard) {
+    private Record metadataRecord(final Magazine<String> magazine, final int shard) {
         final String name = magazine.getShards() <= 1
                 ? magazine.getMagazineIdentifier() + "_" + AerospikeConstants.METADATA
                 : magazine.getMagazineIdentifier() + "_SHARD_" + shard + "_" + AerospikeConstants.METADATA;
@@ -380,18 +387,18 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
 
     @SuppressWarnings("unchecked")
     private Map<Long, Long> history(final Magazine<String> magazine, final int shard) {
-        final Record record = record(magazine, shard);
-        if (record == null) {
+        final Record pointerRecord = metadataRecord(magazine, shard);
+        if (pointerRecord == null) {
             return null;
         }
-        final Object raw = record.getValue(AerospikeConstants.FIRE_HISTORY);
+        final Object raw = pointerRecord.getValue(AerospikeConstants.FIRE_HISTORY);
         return raw instanceof Map ? (Map<Long, Long>) raw : null;
     }
 
     private int shardsWithMetadata(final Magazine<String> magazine, final int shards) {
         int found = 0;
         for (int shard = 0; shard < shards; shard++) {
-            if (record(magazine, shard) != null) {
+            if (metadataRecord(magazine, shard) != null) {
                 found++;
             }
         }
@@ -408,7 +415,8 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         return history.keySet().stream().mapToLong(Long::longValue).min().orElse(0L);
     }
 
-    private int totalCheckpoints(final Magazine<String> magazine, final int shards) {        int total = 0;
+    private int totalCheckpoints(final Magazine<String> magazine, final int shards) {
+        int total = 0;
         for (int shard = 0; shard < shards; shard++) {
             final Map<Long, Long> history = history(magazine, shard);
             total += history == null ? 0 : history.size();
