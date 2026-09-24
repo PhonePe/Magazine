@@ -63,8 +63,12 @@ MagazineManager manager = new MagazineManager("my-client-id");
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `refresh(List<Magazine<?>> magazines)` | `void` | Atomically replace all registered magazines. |
+| `register(Magazine<?> magazine)` | `void` | Add one magazine, leaving other registrations untouched. Replaces any registration under the same identifier. |
+| `getOrRegister(String magazineIdentifier, Supplier<Magazine<T>> factory)` | `Magazine<T>` | Return the registered magazine, invoking `factory` only if absent. Avoids the shard-configuration read a redundant build would cost. |
+| `replaceAll(List<Magazine<?>> magazines)` | `void` | Atomically replace all registered magazines. Anything absent is evicted. |
+| `unregister(String magazineIdentifier)` | `boolean` | Drop one registration. Storage is untouched. |
 | `getMagazine(String magazineIdentifier)` | `Magazine<T>` | Retrieve a magazine by identifier. Throws `MagazineException` with `MAGAZINE_NOT_FOUND` if not found. |
+| `find(String magazineIdentifier)` | `Optional<Magazine<T>>` | Retrieve a magazine by identifier, empty if absent. Use when the caller owns the miss path. |
 
 ---
 
@@ -172,7 +176,7 @@ Descriptive label for a storage backend. A plain enum — dispatch happens throu
 
 ## Thread Safety
 
-- `MagazineManager` publishes an immutable map on each `refresh()`, so concurrent readers observe either the previous or new complete registration set.
+- `MagazineManager` publishes an immutable map on every mutation, so concurrent readers observe either the previous or the new complete registration set. `register`, `getOrRegister` and `unregister` update it with a compare-and-set loop, so concurrent registrations cannot lose each other.
 - `Magazine<T>` delegates all operations to the storage backend. Thread safety depends on the backend implementation.
 - `MagazineContext` is immutable and safe to share.
 - `AerospikeStorage<T>` is thread-safe for all operations. There is no distributed lock: the fire claim is a guarded atomic increment that cannot be lost, and de-duplication relies on a `CREATE_ONLY` write that the server resolves.

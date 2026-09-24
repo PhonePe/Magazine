@@ -103,7 +103,7 @@ public final class MagazineDashboardDemoApplication extends Application<Magazine
                         new MagazineData<>("payment:PAY-202603", 47, 1, "payment-retries")),
                 // Fire history left off, so the dashboard shows the disabled state rather than an error.
                 null);
-        magazineBundle.getMagazineManager().refresh(java.util.List.of(emailJobs, paymentRetries));
+        magazineBundle.getMagazineManager().replaceAll(java.util.List.of(emailJobs, paymentRetries));
     }
 
     /**
