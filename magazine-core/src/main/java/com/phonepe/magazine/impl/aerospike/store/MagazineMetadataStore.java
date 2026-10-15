@@ -39,7 +39,6 @@ import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.metrics.MagazineMetrics;
 import com.phonepe.magazine.metrics.StorageOperation;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +46,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 /**
  * Reads and writes the per-shard metadata records: load/fire pointers and load/fire counters.
@@ -295,12 +295,9 @@ public final class MagazineMetadataStore {
 
     /** Metadata bins plus fire history's refresh operation, if any. */
     private static Operation[] refreshOperations(final FireHistoryStore fireHistory) {
-        final List<Operation> operations = new ArrayList<>();
-        for (String bin : AerospikeConstants.getMetadataBins()) {
-            operations.add(Operation.get(bin));
-        }
-        fireHistory.refreshReadOperation().ifPresent(operations::add);
-        return operations.toArray(new Operation[0]);
+        return Stream.concat(Arrays.stream(AerospikeConstants.getMetadataBins()).map(Operation::get),
+                        fireHistory.refreshReadOperation().stream())
+                .toArray(Operation[]::new);
     }
 
     private Record[] refreshRead(final MagazineContext context) {

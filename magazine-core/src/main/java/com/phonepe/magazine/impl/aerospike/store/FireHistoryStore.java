@@ -132,7 +132,7 @@ public final class FireHistoryStore {
         final long now = System.currentTimeMillis();
         final Window window = Window.containing(now, windowMillis);
         if (now >= window.start() + state(context).getJitterMillis()) {
-            record(context, pointerRecords, window);
+            recordCheckpoints(context, pointerRecords, window);
         }
     }
 
@@ -148,7 +148,7 @@ public final class FireHistoryStore {
         final Record[] records = readHistory(context);
 
         // Record first (undelayed) so history still advances even if resolving throws.
-        record(context, records, Window.containing(System.currentTimeMillis(), windowMillis));
+        recordCheckpoints(context, records, Window.containing(System.currentTimeMillis(), windowMillis));
 
         final Map<String, FireCheckpoint> answers = new HashMap<>(capacityFor(context.getShards()));
         for (int shard = 0; shard < context.getShards(); shard++) {
@@ -177,29 +177,30 @@ public final class FireHistoryStore {
 
     // --- recording ---------------------------------------------------------------------------
 
-    private void record(final MagazineContext context, final Record[] pointerRecords, final Window window) {
+    private void recordCheckpoints(final MagazineContext context, final Record[] pointerRecords,
+            final Window window) {
         final MagazineState state = state(context);
-        final List<Integer> shards = shardsNeedingCheckpoint(context, pointerRecords, window, state);
-        if (!shards.isEmpty()) {
-            write(context, pointerRecords, shards, window, state);
+        final List<PendingCheckpoint> pending = pendingCheckpoints(context, pointerRecords, window, state);
+        if (!pending.isEmpty()) {
+            write(context, pending, window, state);
         }
     }
 
     /** Shards that need this window's checkpoint, each already claimed for this process. */
-    private static List<Integer> shardsNeedingCheckpoint(final MagazineContext context,
+    private static List<PendingCheckpoint> pendingCheckpoints(final MagazineContext context,
             final Record[] pointerRecords,
             final Window window,
             final MagazineState state) {
-        final List<Integer> shards = new ArrayList<>();
+        final List<PendingCheckpoint> pending = new ArrayList<>();
         for (int shard = 0; shard < context.getShards(); shard++) {
             final Record pointers = pointerRecords[shard];
             if (Objects.nonNull(pointers)
                     && needsCheckpoint(pointers, window)
                     && state.claim(shard, window)) {
-                shards.add(shard);
+                pending.add(new PendingCheckpoint(shard, firePointer(pointers)));
             }
         }
-        return shards;
+        return pending;
     }
 
     private static boolean needsCheckpoint(final Record pointers, final Window window) {
@@ -215,21 +216,20 @@ public final class FireHistoryStore {
 
     /** One batch call for every shard; a failed shard's claim is released so it is retried. */
     private void write(final MagazineContext context,
-            final Record[] pointerRecords,
-            final List<Integer> shards,
+            final List<PendingCheckpoint> pending,
             final Window window,
             final MagazineState state) {
         final List<Key> keys = pointerKeys.apply(context);
-        final List<BatchRecord> writes = new ArrayList<>(shards.size());
-        for (int shard : shards) {
-            writes.add(checkpointWrite(keys.get(shard), window.label(), firePointer(pointerRecords[shard])));
-        }
+        final List<BatchRecord> writes = pending.stream()
+                .<BatchRecord>map(checkpoint -> checkpointWrite(keys.get(checkpoint.shard()), window.label(),
+                        checkpoint.firePointer()))
+                .toList();
 
         try {
             metrics.aerospikeCall(context.getMagazineIdentifier(), StorageOperation.WRITE_FIRE_HISTORY);
             client.operate(batchPolicy, writes);
         } catch (Exception e) {
-            shards.forEach(shard -> state.release(shard, window));
+            pending.forEach(checkpoint -> state.release(checkpoint.shard(), window));
             log.warn("Could not record fire history for magazine {} window {}.",
                     context.getMagazineIdentifier(), window.start(), e);
             return;
@@ -240,7 +240,7 @@ public final class FireHistoryStore {
             if (resultCode == ResultCode.OK) {
                 continue;
             }
-            final int shard = shards.get(i);
+            final int shard = pending.get(i).shard();
             state.release(shard, window);
             // A missing record is expected: the shard has none yet, or it expired.
             if (resultCode != ResultCode.KEY_NOT_FOUND_ERROR) {
@@ -340,6 +340,10 @@ public final class FireHistoryStore {
             final long start = now / width * width;
             return new Window(start, start + width);
         }
+    }
+
+    /** A shard to checkpoint, with the fire pointer observed on it. */
+    private record PendingCheckpoint(int shard, long firePointer) {
     }
 
     /** By {@code label}, the fire pointer had reached at least {@code firePointer}. */
