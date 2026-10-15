@@ -125,6 +125,23 @@ classpath. Declare it directly if you depended on it transitively.
 - **`Magazine.deleteAll(Collection<MagazineData<T>>)`** — retire a whole batch in one round trip.
   Optional for callers; **mandatory for anyone implementing `BaseMagazineStorage`**, see section 4.
 
+## Upgrading within 2.0
+
+### 2.0.2
+
+No API changes. Behaviour that can show up on dashboards and alerts:
+
+- **Fire history writes far less.** Checkpoints are written in one batch per magazine, only for shards
+  whose fire pointer moved, and normally by one process per window. `write_fire_history` now counts
+  batch calls, so expect a large drop. Batch writes need Aerospike server 6.0 or later, which batch
+  deletes already required.
+- **Checkpoints are labelled with the end of their window**, not the start, so a label is never
+  earlier than the observation. `firePointerBefore` therefore answers about one window later than
+  before. Entries written by 2.0.1 keep their window-start labels and remain readable; a mixed
+  deployment during a rolling upgrade is safe.
+- **Meters are registered on first use.** An operation or outcome that never happened has no meter;
+  rates and sums read it as zero, but an alert that expects the series to exist needs a default.
+
 ## Checklist
 
 1. Change the artifact to `magazine-core`.

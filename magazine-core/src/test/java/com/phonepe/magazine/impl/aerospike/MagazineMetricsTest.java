@@ -134,4 +134,28 @@ class MagazineMetricsTest extends AerospikeMagazineTestBase {
         assertEquals(0.0, counterValue(registry, "magazine.aerospike.calls", "operation", "write_data"));
         assertTrue(registry.getMeters().isEmpty(), "disabled metrics must register no meters");
     }
+
+    /**
+     * A meter appears the first time it is recorded. Registering every operation and outcome up
+     * front meant thirty meters per magazine, most of them zero for the life of the process.
+     */
+    @Test
+    void onlyMetersThatHaveRecordedSomethingAreRegistered() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AerospikeStorage<String> storage = buildStorage(
+                buildStorageConfig("NAMESPACE", "DATA_SET", "META_SET",
+                        30 * 24 * 60 * 60, 2 * 30 * 24 * 60 * 60, 1),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient,
+                registry);
+        MagazineContext context = storage.initialize("LAZY_METERS_MAGAZINE");
+
+        assertTrue(storage.load(context, "PAYLOAD"));
+
+        assertEquals(1.0, counterValue(registry, "magazine.aerospike.calls", "operation", "write_data"));
+        assertTrue(registry.find("magazine.aerospike.calls").tag("operation", "claim_fire_pointer")
+                .counters().isEmpty(), "nothing has been fired, so the claim counter must not exist");
+        assertTrue(registry.find("magazine.fire.latency").timers().isEmpty());
+        assertTrue(registry.find("magazine.dedupe.outcomes").counters().isEmpty());
+        assertTrue(registry.find("magazine.load.outcomes").tag("outcome", "failed").counters().isEmpty());
+    }
 }

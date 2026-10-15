@@ -24,6 +24,7 @@ import com.phonepe.magazine.entity.MagazineScope;
 import com.phonepe.magazine.exception.ErrorCode;
 import com.phonepe.magazine.exception.MagazineException;
 import com.phonepe.magazine.impl.aerospike.common.AerospikeConstants;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,6 +69,7 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
     void recordsOneCheckpointPerWindow() {
         final int shards = 4;
         // A wide window so the whole test runs inside one, making "same window" unambiguous.
+        awaitFreshWindow(60);
         final Magazine<String> magazine = magazine("HIST_ONE", "HIST_ONE_SET", true, shards, 8, 60);
         loadAndFire(magazine, 3);
 
@@ -146,12 +148,30 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         loadAndFire(magazine, 4);
         magazine.firePointerBefore(Instant.now());
 
-        final FireCheckpoint checkpoint = magazine.firePointerBefore(afterFirstBurst).get("SHARD_0");
+        // Checkpoints are labelled with the end of the window they were observed in, so the first
+        // burst's checkpoint becomes answerable one window after it was taken - and the second
+        // burst, which started later still, cannot be.
+        final Instant question = afterFirstBurst.plusSeconds(WINDOW_SECONDS);
+        final FireCheckpoint checkpoint = magazine.firePointerBefore(question).get("SHARD_0");
         assertNotNull(checkpoint, "the first burst's window is old enough to answer with");
-        assertFalse(checkpoint.recordedAt().isAfter(afterFirstBurst),
+        assertFalse(checkpoint.recordedAt().isAfter(question),
                 "the answer must come from a window that had already closed by then");
         assertTrue(checkpoint.firePointer() <= pointerAfterFirstBurst,
                 "the second burst's pointer must not be used to answer an earlier question");
+    }
+
+    @Test
+    @DisplayName("a checkpoint's label never precedes the moment its pointer was observed")
+    void labelNeverPrecedesObservation() {
+        final Magazine<String> magazine = magazine("HIST_LABEL", "HIST_LABEL_SET", true, 1, 8);
+        loadAndFire(magazine, 2);
+        final long beforeRecording = System.currentTimeMillis();
+        magazine.firePointerBefore(Instant.now());
+
+        // Labelling with the window start would claim the pointer was reached before it was read,
+        // which over-reports by however far into the window the write happened.
+        assertTrue(-newestWindowKey(magazine) >= beforeRecording,
+                "the newest label must be at or after the observation it records");
     }
 
     @Test
@@ -187,24 +207,83 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
     @Test
     @DisplayName("reading advances history, so a burst that is never fired from again stays reachable")
     void readingRecordsACheckpoint() {
-        final Magazine<String> magazine = magazine("HIST_BURST", "HIST_BURST_SET", true, 1, 8);
+        // Refresh effectively off, so only the read can be the one recording.
+        final Magazine<String> magazine = magazine("HIST_BURST", "HIST_BURST_SET", true, 1, 8,
+                WINDOW_SECONDS, 3600, null);
         loadAndFire(magazine, 3);
-        magazine.firePointerBefore(Instant.now());
-        final long newestBefore = newestWindowKey(magazine);
+        final long firePointer = metadataRecord(magazine, 0).getLong(AerospikeConstants.FIRE_POINTER);
 
         awaitNextWindow();
-        // No load, no fire: the magazine is idle. Reading alone must still move history forward,
-        // otherwise a magazine that took one burst and was then abandoned would hold a single
-        // checkpoint predating the burst and its orphans would never become visible.
+        // No load, no fire: the magazine is idle. Reading alone must bring history up to the
+        // current pointer, otherwise a magazine that took one burst and was then abandoned would
+        // hold a checkpoint predating the burst and its orphans would never become visible.
         magazine.firePointerBefore(Instant.now());
 
-        // The property, not a count. The active-shard refresh records on its own schedule, so how
-        // many windows exist by this point is not something the test controls - under load the
-        // preceding loadAndFire can contribute one of its own. What the read must guarantee is that
-        // a window strictly newer than anything present beforehand now exists.
-        assertTrue(newestWindowKey(magazine) < newestBefore,
-                "the read should have recorded a newer window by itself; keys are negated window "
-                        + "timestamps, so newest sorts lowest");
+        assertEquals(firePointer, history(magazine, 0).get(newestWindowKey(magazine)),
+                "the newest checkpoint should hold the pointer the burst left behind");
+    }
+
+    @Test
+    @DisplayName("an idle shard records nothing new, from the refresh or from reads")
+    void idleShardWritesNothing() {
+        final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        final Magazine<String> magazine = magazine("HIST_IDLE", "HIST_IDLE_SET", true, 1, 8,
+                WINDOW_SECONDS, 1, registry);
+        loadAndFire(magazine, 2);
+        // A refresh during the burst may have claimed this window with a mid-burst pointer, in
+        // which case the final pointer is recorded in the next window. Settle that first.
+        magazine.firePointerBefore(Instant.now());
+        awaitNextWindow();
+        magazine.firePointerBefore(Instant.now());
+        final int entries = history(magazine, 0).size();
+        final double writes = writeCalls(registry);
+
+        for (int window = 0; window < 3; window++) {
+            awaitNextWindow();
+            magazine.firePointerBefore(Instant.now());
+        }
+
+        // The fire pointer only moves forward, so a checkpoint that already holds the current
+        // value stays true for every later instant. Rewriting it would cost a call per shard per
+        // window per process for magazines that are doing nothing at all.
+        assertEquals(entries, history(magazine, 0).size(), "no new checkpoint for an unchanged pointer");
+        assertEquals(writes, writeCalls(registry), "no write round trip for an unchanged pointer");
+    }
+
+    @Test
+    @DisplayName("a second process skips a window another process already recorded")
+    void secondProcessSkipsARecordedWindow() {
+        awaitFreshWindow(60);
+        final Magazine<String> first = magazine("HIST_TWO", "HIST_TWO_SET", true, 1, 8, 60, 3600, null);
+        loadAndFire(first, 3);
+        first.firePointerBefore(Instant.now());
+
+        final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        final Magazine<String> second = magazine("HIST_TWO", "HIST_TWO_SET", true, 1, 8, 60, 3600, registry);
+        second.firePointerBefore(Instant.now());
+
+        assertEquals(0.0, writeCalls(registry),
+                "the window's checkpoint is already on the record, so the second process must not call");
+    }
+
+    @Test
+    @DisplayName("every shard's checkpoint goes out in one batch call")
+    void checkpointsAreBatched() {
+        final int shards = 8;
+        final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        awaitFreshWindow(60);
+        final Magazine<String> magazine = magazine("HIST_BATCH", "HIST_BATCH_SET", true, shards, 8,
+                60, 3600, registry);
+        for (int i = 0; i < 40; i++) {
+            magazine.load("message-" + random.nextLong());
+        }
+        final int withRecords = shardsWithMetadata(magazine, shards);
+        assertTrue(withRecords > 1, "expected several shards to have been written to");
+
+        magazine.firePointerBefore(Instant.now());
+
+        assertEquals(withRecords, totalCheckpoints(magazine, shards));
+        assertEquals(1.0, writeCalls(registry), "one round trip for the whole magazine, not one per shard");
     }
 
     @Test
@@ -218,7 +297,8 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
         Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(200))
                 .untilAsserted(() -> {
                     loadAndFire(magazine, 1);
-                    assertFalse(history(magazine, 0).isEmpty(),
+                    final Map<Long, Long> history = history(magazine, 0);
+                    assertTrue(history != null && !history.isEmpty(),
                             "firing alone should eventually record a checkpoint");
                 });
     }
@@ -228,6 +308,7 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
     void lateShardIsCheckpointedInTheSameWindow() {
         final int shards = 8;
         // One window wide enough to hold the whole test, so nothing here can roll into the next.
+        awaitFreshWindow(60);
         final Magazine<String> magazine = magazine("HIST_LATE", "HIST_LATE_SET", true, shards, 8, 60);
         loadAndFire(magazine, 1);
         magazine.firePointerBefore(Instant.now());
@@ -313,10 +394,24 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
     private Magazine<String> magazine(final String identifier, final String setName,
                                       final boolean enabled, final int shards, final int entries,
                                       final int windowSeconds) {
+        return magazine(identifier, setName, enabled, shards, entries, windowSeconds, 1, null);
+    }
+
+    private Magazine<String> magazine(final String identifier, final String setName,
+                                      final boolean enabled, final int shards, final int entries,
+                                      final int windowSeconds, final int refreshSeconds,
+                                      final SimpleMeterRegistry registry) {
         return Magazine.<String>builder()
                 .magazineIdentifier(identifier)
-                .baseMagazineStorage(storageWithHistory(setName, enabled, windowSeconds, entries, shards))
+                .baseMagazineStorage(buildStorage(config(setName, enabled, windowSeconds, entries, shards,
+                                refreshSeconds),
+                        String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient,
+                        registry))
                 .build();
+    }
+
+    private static double writeCalls(final SimpleMeterRegistry registry) {
+        return counterValue(registry, "magazine.aerospike.calls", "operation", "write_fire_history");
     }
 
     private AerospikeStorage<String> storageWithHistory(final String setName, final boolean enabled,
@@ -327,7 +422,14 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
     private AerospikeStorage<String> storageWithHistory(final String setName, final boolean enabled,
                                                         final int windowSeconds, final int entries,
                                                         final int shards) {
-        return buildStorage(AerospikeStorageConfig.builder()
+        return buildStorage(config(setName, enabled, windowSeconds, entries, shards, 1),
+                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient);
+    }
+
+    private static AerospikeStorageConfig config(final String setName, final boolean enabled,
+                                                 final int windowSeconds, final int entries,
+                                                 final int shards, final int refreshSeconds) {
+        return AerospikeStorageConfig.builder()
                         .namespace(NAMESPACE)
                         .dataSetName(setName)
                         .metaSetName("META_SET")
@@ -335,12 +437,25 @@ class MagazineFireHistoryTest extends AerospikeMagazineTestBase {
                         .metaDataTtl(2 * 30 * 24 * 60 * 60)
                         .shards(shards)
                         // Refresh often, so the fire path exercises the recorder within a test's life.
-                        .activeShardRefreshSeconds(1)
+                        .activeShardRefreshSeconds(refreshSeconds)
                         .fireHistoryEnabled(enabled)
                         .fireHistoryWindowSeconds(windowSeconds)
                         .fireHistoryEntries(entries)
-                        .build(),
-                String.class, false, "FARM_ID", "CLIENT_ID", MagazineScope.LOCAL, aerospikeClient);
+                        .build();
+    }
+
+    /**
+     * Windows are aligned to the clock, so a test that must stay inside one window starts near the
+     * beginning of one rather than wherever the clock happens to be.
+     */
+    private static void awaitFreshWindow(final int windowSeconds) {
+        final long windowMillis = windowSeconds * 1_000L;
+        final long remaining = windowMillis - System.currentTimeMillis() % windowMillis;
+        // These tests take a couple of seconds; fifteen leaves ample margin.
+        if (remaining < 15_000) {
+            Awaitility.await("the start of a fresh window").pollDelay(Duration.ofMillis(remaining + 50))
+                    .atMost(Duration.ofMillis(remaining + 5_000)).until(() -> true);
+        }
     }
 
     private void awaitNextWindow() {

@@ -42,9 +42,8 @@ public final class AerospikeConstants {
     public static final String CREATED_AT = "CREATED_AT";
     public static final String SHARDS_BIN = "SHARDS";
     /**
-     * Delivery-time checkpoints: a key-ordered map of {@code negated window start -> fire pointer}.
-     * Keys are negated so the map sorts newest-first, which makes eviction a single index-range
-     * removal that keeps the newest N entries.
+     * Delivery-time checkpoints: key-ordered map of {@code -label -> fire pointer}, label being the
+     * observation window's end. Negated keys sort newest-first, so eviction is one index range.
      */
     public static final String FIRE_HISTORY = "FIRE_HISTORY";
 
