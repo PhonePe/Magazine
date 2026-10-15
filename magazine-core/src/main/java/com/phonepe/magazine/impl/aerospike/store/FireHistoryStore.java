@@ -153,7 +153,7 @@ public final class FireHistoryStore {
         final Map<String, FireCheckpoint> answers = new HashMap<>(capacityFor(context.getShards()));
         for (int shard = 0; shard < context.getShards(); shard++) {
             final int current = shard;
-            resolve(context, current, checkpoints(records[current]), instant)
+            resolve(context, current, checkpoints(historyBin(records[current])), instant)
                     .ifPresent(checkpoint -> answers.put(context.shardId(current), checkpoint.toEntity()));
         }
         return answers;
@@ -165,7 +165,7 @@ public final class FireHistoryStore {
         final Record[] records = readHistory(context);
         final Map<String, List<FireCheckpoint>> history = new HashMap<>(capacityFor(context.getShards()));
         for (int shard = 0; shard < context.getShards(); shard++) {
-            final List<FireCheckpoint> checkpoints = checkpoints(records[shard]).stream()
+            final List<FireCheckpoint> checkpoints = checkpoints(historyBin(records[shard])).stream()
                     .map(Checkpoint::toEntity)
                     .toList();
             if (!checkpoints.isEmpty()) {
@@ -204,7 +204,8 @@ public final class FireHistoryStore {
     }
 
     private static boolean needsCheckpoint(final Record pointers, final Window window) {
-        final Optional<Checkpoint> newest = checkpoints(pointers).stream().findFirst();
+        final Optional<Checkpoint> newest = checkpoints(pointers.getValue(AerospikeConstants.FIRE_HISTORY))
+                .stream().findFirst();
         if (newest.isEmpty()) {
             return true;
         }
@@ -299,9 +300,13 @@ public final class FireHistoryStore {
         return answer;
     }
 
+    /** The history bin of a batch-read slot, which is null when the shard has no record. */
+    private static Object historyBin(final Record pointerRecord) {
+        return Objects.isNull(pointerRecord) ? null : pointerRecord.getValue(AerospikeConstants.FIRE_HISTORY);
+    }
+
     /** Checkpoints newest first, from either the full map or the refresh read's single entry. */
-    private static List<Checkpoint> checkpoints(final Record pointerRecord) {
-        final Object raw = Objects.isNull(pointerRecord) ? null : pointerRecord.getValue(AerospikeConstants.FIRE_HISTORY);
+    private static List<Checkpoint> checkpoints(final Object raw) {
         final Stream<?> rawEntries;
         if (raw instanceof Map<?, ?> map) {
             rawEntries = map.entrySet().stream();
