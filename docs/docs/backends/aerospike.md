@@ -124,24 +124,74 @@ was actually read, so a crash leaves it short, which keeps the shard active and 
 
 ## Fire history
 
-When `fireHistoryEnabled` is set, each shard's **unified metadata record** carries an extra map bin
-holding delivery-time checkpoints: window start to the fire pointer reached in that window.
+When `fireHistoryEnabled` is set, each shard's **unified metadata record** carries an extra map bin,
+`FIRE_HISTORY`, holding delivery-time checkpoints: `label -> fire pointer`, meaning "by `label`, the
+fire pointer had reached at least this value". Keys are stored negated so the key-ordered map sorts
+newest first. The logic lives in `FireHistoryStore`.
 
-- **One entry per shard per window**, regardless of throughput.
-- **Checkpoints are written during the active-shard refresh, not on the claim path.** That refresh
-  already batch-reads every shard's pointer record, so the numbers being recorded are already in
-  hand and no extra read is needed. Deliberately *not* coupled to the claim: claims are the hot path
-  and are far more frequent than the resolution a window needs.
-- `firePointerBefore` also records before it resolves, so a magazine whose history cannot yet answer
-  still accumulates usable history rather than being stuck unable to ever answer.
-- **Each shard's checkpoint is claimed independently**, and the claim is released if the write fails,
-  so a shard that errored is retried next round instead of sitting the window out.
+### Windows and labels
+
+Time is cut into fixed windows of `fireHistoryWindowSeconds`, aligned to the epoch. Each shard gets
+**at most one checkpoint per window**, regardless of throughput or how many processes serve the
+magazine.
+
+A checkpoint is labelled with the **end** of the window it was observed in. The label must never be
+earlier than the moment the pointer was read, or an answer would claim slots were taken before they
+were; the end of the window is always at or after the observation. The consequence is that a checkpoint
+becomes usable one window after it is taken.
+
+### When a checkpoint is written
+
+Checkpoints are written from the **active-shard refresh**, not the claim path. The refresh already
+batch-reads every shard's pointer record; with fire history on, that same read also fetches each
+shard's **newest checkpoint only** (one map entry, not the whole map). A shard is then skipped, with
+no call at all, when:
+
+- **This window is already recorded** — its newest label is this window's. Another process, or an
+  earlier call here, wrote it.
+- **The pointer has not moved** — its newest checkpoint already holds the current fire pointer. The
+  fire pointer only increases, so that older checkpoint stays true for every later instant. An idle
+  magazine costs nothing, however many processes serve it.
+
+Every remaining shard is written in **one batch call per magazine**, not one call per shard.
+
+### Spreading writes across processes
+
+Every consuming process runs the refresh. To stop them all writing right after each window boundary,
+each process waits a **random offset into the first half of the window**, drawn once per magazine and
+kept for the life of the process. The first process past its offset writes; the others read that
+checkpoint on their next refresh and skip. This is always on with fire history and is not
+configurable.
+
+### Writes from `firePointerBefore`
+
+`firePointerBefore` reads the whole history, then applies the same rules before resolving — never
+delayed by the offset. This keeps history advancing when nothing is consuming (the refresh only runs
+while something calls `fire()`), so claims made just before consumption stopped still become visible.
+In steady state the refresh has already recorded the window and this writes nothing.
+
+### Safety and retention
+
+- **Best-effort.** A failed write leaves the previous checkpoint in place, which is still true. It
+  never fails the refresh or the read that triggered it.
+- **Per-shard claims in each process** stop concurrent callers here from writing the same window,
+  and a claim is released if its write fails, so that shard is retried on the next refresh.
+- **Create-only per label.** If two processes race on a label, the first wins and the other is a
+  server-side no-op.
 - **Eviction is by count** (`fireHistoryEntries`), applied on write — by count rather than age so an
   idle magazine keeps reach instead of having its history wiped by the first write after a pause.
+  The map rides the pointer record that every claim rewrites, so larger values make every claim
+  slightly heavier.
 - **Legacy split metadata does not support it.** Fire history requires the unified metadata record.
 
-The cost is bytes on a record that is already read and written by a periodic refresh, not an extra
-operation on the delivery path.
+### Cost
+
+| Magazine state | Calls per window |
+|---|---|
+| Idle (pointer unchanged) | none |
+| Active | usually one batch write for the whole magazine, from one process |
+
+Plus one map entry per shard on a refresh read that already happens.
 
 ## Metadata schema versions
 

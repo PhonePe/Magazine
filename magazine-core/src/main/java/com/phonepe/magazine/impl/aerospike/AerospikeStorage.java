@@ -34,6 +34,7 @@ import com.phonepe.magazine.impl.aerospike.common.AerospikeRetryer;
 import com.phonepe.magazine.impl.aerospike.common.ErrorMessage;
 import com.phonepe.magazine.impl.aerospike.store.ActiveShardSelector;
 import com.phonepe.magazine.impl.aerospike.store.DeDupeGuard;
+import com.phonepe.magazine.impl.aerospike.store.FireHistoryStore;
 import com.phonepe.magazine.impl.aerospike.store.MagazineDataStore;
 import com.phonepe.magazine.impl.aerospike.store.MagazineMetadataStore;
 import com.phonepe.magazine.metrics.MagazineMetrics;
@@ -106,7 +107,7 @@ public class AerospikeStorage<T> extends BaseMagazineStorage<T> {
                 namespace, metaSetName, storageConfig.getShards(), storageConfig.isAllowShardIncrease());
         this.metadataStore = new MagazineMetadataStore(aerospikeClient, retryerFactory, metrics,
                 namespace, metaSetName, getMetaDataTtl(),
-                new MagazineMetadataStore.FireHistoryConfig(storageConfig.isFireHistoryEnabled(),
+                new FireHistoryStore.FireHistoryConfig(storageConfig.isFireHistoryEnabled(),
                         storageConfig.fireHistoryWindowMillis(), storageConfig.getFireHistoryEntries()));
         this.dataStore = new MagazineDataStore<>(aerospikeClient, retryerFactory, metrics,
                 namespace, dataSetName, getRecordTtl(), clazz);

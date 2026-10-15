@@ -34,7 +34,7 @@ import lombok.Getter;
  * {@link #aerospikeCall} counts <em>round trips</em> rather than logical operations, which is the
  * only way to see a dequeue's cost change under contention.
  * <p>
- * Written to allocate nothing on the hot path: meters are resolved once per magazine into a
+ * Written to allocate nothing on the hot path: meters are resolved on first use into a
  * {@link Meters} holder indexed by enum ordinal, so recording is a map lookup plus an array index.
  * Percentile histograms are deliberately not enabled - they allocate hundreds of buckets per timer
  * and do bucket arithmetic per record. Add a {@link io.micrometer.core.instrument.config.MeterFilter}
@@ -61,7 +61,7 @@ public final class MagazineMetrics {
     private static final String TAG_OUTCOME = "outcome";
     private static final String TAG_OPERATION = "operation";
 
-    /** Lets {@link Meters#outcomes} register any outcome enum without knowing which one it has. */
+    /** Lets {@link Meters#outcome} register any outcome enum without knowing which one it has. */
     interface Tagged {
 
         String getTag();
@@ -119,27 +119,31 @@ public final class MagazineMetrics {
     }
 
     public void aerospikeCall(final String magazineIdentifier, final StorageOperation operation) {
-        meters(magazineIdentifier).calls[operation.ordinal()].increment();
+        meters(magazineIdentifier).call(operation).increment();
     }
 
     public void fireClaim(final String magazineIdentifier, final ClaimOutcome outcome) {
-        meters(magazineIdentifier).fireClaims[outcome.ordinal()].increment();
+        final Meters meters = meters(magazineIdentifier);
+        meters.outcome(meters.fireClaims, FIRE_CLAIMS, outcome).increment();
     }
 
     public void fireHoleSkip(final String magazineIdentifier) {
-        meters(magazineIdentifier).fireHoleSkips.increment();
+        meters(magazineIdentifier).fireHoleSkips().increment();
     }
 
     public void fireOutcome(final String magazineIdentifier, final FireOutcome outcome) {
-        meters(magazineIdentifier).fireOutcomes[outcome.ordinal()].increment();
+        final Meters meters = meters(magazineIdentifier);
+        meters.outcome(meters.fireOutcomes, FIRE_OUTCOMES, outcome).increment();
     }
 
     public void loadOutcome(final String magazineIdentifier, final LoadOutcome outcome) {
-        meters(magazineIdentifier).loadOutcomes[outcome.ordinal()].increment();
+        final Meters meters = meters(magazineIdentifier);
+        meters.outcome(meters.loadOutcomes, LOAD_OUTCOMES, outcome).increment();
     }
 
     public void dedupeOutcome(final String magazineIdentifier, final DedupeOutcome outcome) {
-        meters(magazineIdentifier).dedupeOutcomes[outcome.ordinal()].increment();
+        final Meters meters = meters(magazineIdentifier);
+        meters.outcome(meters.dedupeOutcomes, DEDUPE_OUTCOMES, outcome).increment();
     }
 
     /** A primitive rather than a {@code Timer.Sample}, so timing allocates nothing. */
@@ -148,12 +152,12 @@ public final class MagazineMetrics {
     }
 
     public void recordFire(final long startNanos, final String magazineIdentifier) {
-        meters(magazineIdentifier).fireLatency
+        meters(magazineIdentifier).fireLatency()
                 .record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
     }
 
     public void recordLoad(final long startNanos, final String magazineIdentifier) {
-        meters(magazineIdentifier).loadLatency
+        meters(magazineIdentifier).loadLatency()
                 .record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
     }
 
@@ -161,46 +165,69 @@ public final class MagazineMetrics {
         return byMagazine.computeIfAbsent(magazineIdentifier, id -> new Meters(registry, id));
     }
 
+    /**
+     * One magazine's meters, registered on first use. A racing first use resolves to the same
+     * meter in the registry. No allocation once registered.
+     */
     private static final class Meters {
 
-        private final Counter[] calls;
-        private final Counter[] fireClaims;
-        private final Counter[] fireOutcomes;
-        private final Counter[] loadOutcomes;
-        private final Counter[] dedupeOutcomes;
-        private final Counter fireHoleSkips;
-        private final Timer fireLatency;
-        private final Timer loadLatency;
+        private final MeterRegistry registry;
+        private final Tags magazine;
+        private final Counter[] calls = new Counter[StorageOperation.values().length];
+        private final Counter[] fireClaims = new Counter[ClaimOutcome.values().length];
+        private final Counter[] fireOutcomes = new Counter[FireOutcome.values().length];
+        private final Counter[] loadOutcomes = new Counter[LoadOutcome.values().length];
+        private final Counter[] dedupeOutcomes = new Counter[DedupeOutcome.values().length];
+        private Counter fireHoleSkips;
+        private Timer fireLatency;
+        private Timer loadLatency;
 
         private Meters(final MeterRegistry registry, final String magazineIdentifier) {
-            final Tags magazine = Tags.of(TAG_MAGAZINE, magazineIdentifier);
-            final StorageOperation[] operations = StorageOperation.values();
-            this.calls = new Counter[operations.length];
-            for (StorageOperation operation : operations) {
-                this.calls[operation.ordinal()] = Counter.builder(AEROSPIKE_CALLS)
-                        .tags(magazine.and(TAG_OPERATION, operation.getTag()))
-                        .register(registry);
-            }
-            this.fireClaims = outcomes(registry, FIRE_CLAIMS, magazine, ClaimOutcome.values());
-            this.fireOutcomes = outcomes(registry, FIRE_OUTCOMES, magazine, FireOutcome.values());
-            this.loadOutcomes = outcomes(registry, LOAD_OUTCOMES, magazine, LoadOutcome.values());
-            this.dedupeOutcomes = outcomes(registry, DEDUPE_OUTCOMES, magazine, DedupeOutcome.values());
-            this.fireHoleSkips = Counter.builder(FIRE_HOLE_SKIPS).tags(magazine).register(registry);
-            this.fireLatency = Timer.builder(FIRE_LATENCY).tags(magazine).register(registry);
-            this.loadLatency = Timer.builder(LOAD_LATENCY).tags(magazine).register(registry);
+            this.registry = registry;
+            this.magazine = Tags.of(TAG_MAGAZINE, magazineIdentifier);
         }
 
-        private static <E extends Enum<E> & Tagged> Counter[] outcomes(final MeterRegistry registry,
-                final String name,
-                final Tags magazine,
-                final E[] values) {
-            final Counter[] counters = new Counter[values.length];
-            for (E outcome : values) {
-                counters[outcome.ordinal()] = Counter.builder(name)
+        Counter call(final StorageOperation operation) {
+            Counter counter = calls[operation.ordinal()];
+            if (Objects.isNull(counter)) {
+                counter = Counter.builder(AEROSPIKE_CALLS)
+                        .tags(magazine.and(TAG_OPERATION, operation.getTag()))
+                        .register(registry);
+                calls[operation.ordinal()] = counter;
+            }
+            return counter;
+        }
+
+        <E extends Enum<E> & Tagged> Counter outcome(final Counter[] slots, final String name, final E outcome) {
+            Counter counter = slots[outcome.ordinal()];
+            if (Objects.isNull(counter)) {
+                counter = Counter.builder(name)
                         .tags(magazine.and(TAG_OUTCOME, outcome.getTag()))
                         .register(registry);
+                slots[outcome.ordinal()] = counter;
             }
-            return counters;
+            return counter;
+        }
+
+        Counter fireHoleSkips() {
+            if (Objects.isNull(fireHoleSkips)) {
+                fireHoleSkips = Counter.builder(FIRE_HOLE_SKIPS).tags(magazine).register(registry);
+            }
+            return fireHoleSkips;
+        }
+
+        Timer fireLatency() {
+            if (Objects.isNull(fireLatency)) {
+                fireLatency = Timer.builder(FIRE_LATENCY).tags(magazine).register(registry);
+            }
+            return fireLatency;
+        }
+
+        Timer loadLatency() {
+            if (Objects.isNull(loadLatency)) {
+                loadLatency = Timer.builder(LOAD_LATENCY).tags(magazine).register(registry);
+            }
+            return loadLatency;
         }
     }
 }

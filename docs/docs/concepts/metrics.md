@@ -100,7 +100,9 @@ regardless of who attached it.
 
 ## What is published
 
-All meters are tagged `magazine`.
+All meters are tagged `magazine`. Each is registered the first time it records, so a magazine that
+has never fired carries no fire meters, and an operation that never ran has no counter. An absent
+meter reads as zero in rates and sums.
 
 | Meter | Type | Tags | What it tells you |
 |---|---|---|---|
@@ -118,7 +120,11 @@ All meters are tagged `magazine`.
 `claim_fire_pointer`, `increment_load_pointer`, `increment_load_counter`, `increment_fire_counter`,
 `decrement_fire_counter`, `batch_read_metadata`, `refresh_active_shards`, `read_data`, `write_data`,
 `delete_data`, `batch_delete_data`, `batch_read_data`, `claim_dedupe_marker`,
-`withdraw_dedupe_marker`.
+`withdraw_dedupe_marker`, `write_fire_history`, `read_fire_history`.
+
+`write_fire_history` counts **batch calls**: at most one per magazine per window, and none for a
+magazine whose fire pointers have not moved. `read_fire_history` is the read behind
+`firePointerBefore` and `fireHistory`.
 
 `refresh_active_shards` is the batch read behind an active-shard cache refresh, split out from
 `batch_read_metadata` so refresh traffic is attributable without a meter of its own. A magazine on
@@ -138,6 +144,8 @@ Divide `magazine.aerospike.calls` by the matching outcome counter. Healthy stead
 | Shard discovery | 1–2 batches / `activeShardRefreshSeconds` / magazine | `refresh_active_shards`; fans out to every shard |
 | `delete()` | **1** | `delete_data` |
 | `deleteAll()` | **1** | `batch_delete_data`, whatever the batch size. A one-record batch takes the single-key path and counts as `delete_data` |
+| Fire-history recording | **≤ 1** batch / window / magazine | `write_fire_history`, only if some shard's fire pointer moved and the window is not yet recorded by any process. Rides the shard-discovery read; no extra read |
+| `firePointerBefore()` | **1**, plus **≤ 1** | `read_fire_history`, plus a `write_fire_history` batch only when the read finds the window unrecorded |
 
 **Calls per `fire()` does not rise with consumer count.** The claim is a guarded atomic increment,
 so concurrent consumers get distinct pointers and no claim is ever lost. If you see the ratio climb

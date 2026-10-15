@@ -157,6 +157,10 @@ message.
 **Off by default.** The checkpoint map rides the shard's pointer record and every claim rewrites that
 record, so a caller that never asks should not pay for it.
 
+Once on, checkpoints are recorded automatically while the magazine is consumed: at most one per shard
+per window, none for a shard whose pointer has not moved, and one batch call per magazine. See
+[Fire history](backends/aerospike.md#fire-history) for how.
+
 ```java
 AerospikeStorageConfig.builder()
         .dataSetName("my_data")
@@ -183,6 +187,9 @@ watermarks.forEach((shard, checkpoint) ->
 Every slot at or below the returned pointer was claimed at or before that instant. Slots above it
 might have been claimed a moment ago.
 
+A checkpoint is labelled with the end of the window it was observed in, so it answers questions about
+instants from one window later onwards. Precision is therefore one to two windows.
+
 !!! note "An absent shard means 'do nothing', not 'empty'"
     A shard is missing from the result when no checkpoint reaches back that far yet. That is normal
     for a young magazine. Treat it as "nothing is provably old enough here this round" — never as
@@ -192,8 +199,8 @@ might have been claimed a moment ago.
 
 | Setting | Meaning |
 |---|---|
-| `fireHistoryWindowSeconds` | Seconds covered by one checkpoint, and therefore the **resolution** of every answer. One entry per shard per window, whatever the throughput |
-| `fireHistoryEntries` | Checkpoints retained per shard. Eviction is by **count, not age**, so an intermittently used magazine reaches further back than `window x entries` rather than having its history wiped by the first write after an idle period |
+| `fireHistoryWindowSeconds` | Seconds covered by one checkpoint, and therefore the **resolution** of every answer. At most one entry per shard per window, whatever the throughput, and none while the shard's pointer does not move. A wider window means fewer writes |
+| `fireHistoryEntries` | Checkpoints retained per shard. Eviction is by **count, not age**, so an intermittently used magazine reaches further back than `window x entries` rather than having its history wiped by the first write after an idle period. The map rides the pointer record every claim rewrites, so raise this only as far as you need |
 
 Asking about an instant further back than the retained history throws `INVALID_REQUEST`, and asking
 at all with the feature disabled throws `NOT_ENABLED`.

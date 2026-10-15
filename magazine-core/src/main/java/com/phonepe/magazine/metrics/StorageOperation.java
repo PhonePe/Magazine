@@ -52,7 +52,7 @@ public enum StorageOperation {
     DELETE_DATA("delete_data"),
     BATCH_READ_DATA("batch_read_data"),
     BATCH_DELETE_DATA("batch_delete_data"),
-    /** The checkpoint write; one per shard per window, not one per claim. */
+    /** Checkpoint write: one batch call per magazine, for shards whose pointer moved. */
     WRITE_FIRE_HISTORY("write_fire_history"),
     /** The batch read behind {@code firePointerBefore}. */
     READ_FIRE_HISTORY("read_fire_history"),

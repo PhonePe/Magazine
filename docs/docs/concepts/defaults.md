@@ -15,7 +15,7 @@
 | `maxFireHoleSkips` | `512` | Bounds `fire()`; exhausting it raises `RETRIES_EXHAUSTED`. |
 | `metricsEnabled` | `true` | Publishes to Micrometer's global registry unless a `meterRegistry` is set on the builder. |
 | `fireHistoryEnabled` | `false` | Records delivery-time checkpoints, which `firePointerBefore` reads. Off by default: the checkpoint map rides the pointer record. |
-| `fireHistoryWindowSeconds` | `300` | Seconds per checkpoint, and so the resolution of every `firePointerBefore` answer. |
+| `fireHistoryWindowSeconds` | `300` | Seconds per checkpoint, and so the resolution of every `firePointerBefore` answer. Background writes are spread over the first half of each window; not configurable. |
 | `fireHistoryEntries` | `32` | Checkpoints retained per shard. Evicted by **count**, not age. |
 
 ### `metaDataTtl` must outlive `recordTtl`

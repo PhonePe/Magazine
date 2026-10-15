@@ -19,6 +19,7 @@ package com.phonepe.magazine.impl.aerospike.common;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.policy.BatchDeletePolicy;
 import com.aerospike.client.policy.BatchPolicy;
+import com.aerospike.client.policy.BatchWritePolicy;
 import com.aerospike.client.policy.WritePolicy;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -51,5 +52,11 @@ public final class AerospikePolicies {
     public static BatchDeletePolicy batchDeletePolicy(final IAerospikeClient client) {
         final BatchDeletePolicy defaults = client.getBatchDeletePolicyDefault();
         return Objects.isNull(defaults) ? new BatchDeletePolicy() : new BatchDeletePolicy(defaults);
+    }
+
+    /** @return a copy of the client's default batch write policy, or a fresh default. */
+    public static BatchWritePolicy batchWritePolicy(final IAerospikeClient client) {
+        final BatchWritePolicy defaults = client.getBatchWritePolicyDefault();
+        return Objects.isNull(defaults) ? new BatchWritePolicy() : new BatchWritePolicy(defaults);
     }
 }
